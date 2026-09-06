@@ -1,0 +1,13 @@
+{
+  "_comment": "최초 1회만 사용됩니다. data/user_profile.json 이 없을 때 이 값으로 초기화합니다. 아래 값은 플레이스홀더이니 직접 수정하세요.",
+  "position": "백엔드 엔지니어",
+  "tech_stack": ["Kotlin", "Spring", "Kafka", "PostgreSQL"],
+  "interests": ["분산시스템", "이벤트 드리븐 아키텍처", "성능 최적화"],
+  "level": "3-5년차",
+  "language": ["ko", "en"],
+  "few_shot_videos": [
+    "https://www.youtube.com/watch?v=REPLACE_ME_1",
+    "https://www.youtube.com/watch?v=REPLACE_ME_2",
+    "https://www.youtube.com/watch?v=REPLACE_ME_3"
+  ]
+}

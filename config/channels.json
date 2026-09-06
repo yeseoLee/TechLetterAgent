@@ -1,0 +1,15 @@
+{
+  "_comment": "유튜브 채널 화이트리스트. channel_id 는 `python scripts/resolve_channel_id.py <채널 URL>` 로 확인해서 채워넣으세요. RSS 피드: https://www.youtube.com/feeds/videos.xml?channel_id=<ID>",
+  "channels": [
+    { "name": "우아한테크", "handle": "@woowatech", "channel_id": "REPLACE_ME", "language": "ko" },
+    { "name": "NAVER D2", "handle": "@naver_d2", "channel_id": "REPLACE_ME", "language": "ko" },
+    { "name": "if(kakao)", "handle": "@kakaotech", "channel_id": "REPLACE_ME", "language": "ko" },
+    { "name": "토스 (Toss)", "handle": "@tossteam", "channel_id": "REPLACE_ME", "language": "ko" }
+  ],
+  "conference_sources": [
+    { "name": "네이버 DEVIEW", "url": "https://deview.kr/" },
+    { "name": "우아콘", "url": "https://woowacon.com/" },
+    { "name": "토스 SLASH", "url": "https://toss.im/slash" },
+    { "name": "인프콘", "url": "https://festa.io/" }
+  ]
+}
