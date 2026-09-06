@@ -69,9 +69,12 @@ def main(dry_run: bool = False) -> None:
     for pick in picks:
         pick["id"] = content_store.next_id(history + picks, "rec")
 
+    # mailto 피드백 링크와 Reply-To 는 피드백 주소를 쓴다. 답장이 태그를 달고
+    # 돌아와야 일상 메일과 구분해서 골라낼 수 있다.
     subject, html_body, text_body = newsletter_agent.render(
-        picks, by_id, config.RECIPIENT_EMAIL)
-    message_id = email_client.send(subject, html_body, text_body, config.RECIPIENT_EMAIL)
+        picks, by_id, config.FEEDBACK_ADDRESS)
+    message_id = email_client.send(subject, html_body, text_body,
+                                   config.RECIPIENT_EMAIL, config.FEEDBACK_ADDRESS)
 
     for pick in picks:
         history.append({
@@ -98,7 +101,8 @@ def _apply_feedback(profile: dict, notes: list[dict]) -> tuple[dict, list[dict]]
     seen = {f.get("message_id") for f in feedback_log if f.get("message_id")}
 
     try:
-        replies = email_client.fetch_replies_since(last_sent, known_ids, seen)
+        replies = email_client.fetch_replies_since(
+            last_sent, known_ids, seen, config.FEEDBACK_ADDRESS)
     except Exception as exc:
         log.warning("답장 조회 실패, 이번 회차는 건너뜁니다: %s", exc)
         return profile, notes

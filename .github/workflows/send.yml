@@ -38,6 +38,7 @@ jobs:
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+          FEEDBACK_ADDRESS: ${{ secrets.FEEDBACK_ADDRESS }}
         run: python -m src.run_send ${{ inputs.dry_run && '--dry-run' || '' }}
 
       - name: Commit state

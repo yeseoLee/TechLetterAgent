@@ -96,6 +96,25 @@ OAuth 동의 화면, 심사, refresh token 7일 만료를 감수할 이유가 �
 
 앱 비밀번호는 만료되지 않습니다. 폐기하려면 같은 페이지에서 삭제하면 됩니다.
 
+**플러스 주소로 답장 구분하기 (권장)**
+
+일상적으로 쓰는 Gmail 계정이라면 `FEEDBACK_ADDRESS` 에 플러스 주소를 넣으세요.
+
+```
+FEEDBACK_ADDRESS=yscoder3893+techletter@gmail.com
+```
+
+이 주소가 메일의 `Reply-To` 헤더와 👍/👎 mailto 링크에 들어가서, 답장이 태그를 달고
+돌아옵니다. IMAP 은 `TO "…+techletter@gmail.com"` 으로 검색하므로 일상 메일과 절대
+섞이지 않습니다. 별도 계정을 만들 필요가 없습니다.
+
+`To` 에만 태그를 넣으면 안 됩니다 — 답장할 때 `To` 가 발신 주소로 바뀌면서 태그가
+사라집니다. 그래서 `Reply-To` 를 씁니다.
+
+받은편지함에서도 분리하고 싶으면 Gmail 필터를 추가하세요.
+설정 → 필터 및 차단된 주소 → 새 필터 만들기 → `받는사람: yscoder3893+techletter@gmail.com`
+→ 라벨 적용. IMAP 검색은 `INBOX` 를 보므로 "받은편지함 건너뛰기" 는 켜지 마세요.
+
 ### 5. GitHub Secrets
 
 | Secret | 용도 |
@@ -105,6 +124,7 @@ OAuth 동의 화면, 심사, refresh token 7일 만료를 감수할 이유가 �
 | `GMAIL_ADDRESS` | 발송에 쓸 Gmail 주소 |
 | `GMAIL_APP_PASSWORD` | 앱 비밀번호 16자리 |
 | `RECIPIENT_EMAIL` | 뉴스레터 수신 주소. 생략하면 `GMAIL_ADDRESS` 로 보냅니다 |
+| `FEEDBACK_ADDRESS` | 피드백을 받을 주소. 플러스 주소 권장 (아래 참고) |
 
 레포 Settings → Secrets and variables → Actions 에서 등록합니다.
 

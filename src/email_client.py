@@ -40,18 +40,24 @@ def _credentials() -> tuple[str, str]:
     return config.GMAIL_ADDRESS, config.GMAIL_APP_PASSWORD
 
 
-def send(subject: str, html_body: str, text_body: str, to_addr: str | None = None) -> str:
+def send(subject: str, html_body: str, text_body: str, to_addr: str | None = None,
+         reply_to: str | None = None) -> str:
     """뉴스레터를 발송하고 Message-ID 를 반환한다.
 
     반환값을 recommendations.json 에 남겨두면 나중에 답장을 스레드로 되짚을 수 있다.
+
+    reply_to 에 플러스 주소를 주면 답장이 그 주소로 돌아온다. To 에만 넣으면
+    답장할 때 To 가 발신 주소로 바뀌면서 태그가 사라진다.
     """
     address, password = _credentials()
     to_addr = to_addr or address
+    reply_to = reply_to or to_addr
 
     message = EmailMessage()
     message["Subject"] = subject
     message["From"] = f"TechLetterAgent <{address}>"
     message["To"] = to_addr
+    message["Reply-To"] = reply_to
     message_id = make_msgid(domain="techletteragent.local")
     message["Message-ID"] = message_id
 
@@ -67,12 +73,17 @@ def send(subject: str, html_body: str, text_body: str, to_addr: str | None = Non
 
 
 def fetch_replies_since(since_iso: str = "", known_message_ids: set[str] | None = None,
-                        seen_reply_ids: set[str] | None = None) -> list[dict]:
+                        seen_reply_ids: set[str] | None = None,
+                        feedback_address: str | None = None) -> list[dict]:
     """지난 발송 이후 도착한 답장을 가져온다.
+
+    feedback_address 가 플러스 주소면 그 주소로 온 것만 본다. 일상 메일과 섞인
+    받은편지함에서 이 봇 앞으로 온 답장만 정확히 골라낼 수 있다.
 
     반환: [{message_id, subject, body, received_at, in_reply_to}, ...]
     """
     address, password = _credentials()
+    feedback_address = feedback_address or config.FEEDBACK_ADDRESS or address
     known_message_ids = known_message_ids or set()
     seen_reply_ids = seen_reply_ids or set()
 
@@ -83,8 +94,13 @@ def fetch_replies_since(since_iso: str = "", known_message_ids: set[str] | None 
         imap.login(address, password)
         imap.select("INBOX", readonly=True)
 
-        # 본인이 본인에게 보낸 답장이므로 FROM 으로 좁힌다.
-        status, data = imap.search(None, "FROM", f'"{address}"', "SINCE", since)
+        # 플러스 주소가 있으면 그쪽으로 온 것만, 없으면 본인 발신 메일로 좁힌다.
+        if "+" in feedback_address:
+            criteria = ("TO", f'"{feedback_address}"', "SINCE", since)
+        else:
+            criteria = ("FROM", f'"{address}"', "SINCE", since)
+        log.info("IMAP 검색: %s", " ".join(criteria))
+        status, data = imap.search(None, *criteria)
         if status != "OK":
             log.warning("IMAP 검색 실패: %s", status)
             return []

@@ -66,6 +66,12 @@ YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
 # 수신 주소. 지정하지 않으면 발송 계정 자신에게 보낸다.
 RECIPIENT_EMAIL = os.environ.get("RECIPIENT_EMAIL") or os.environ.get("GMAIL_ADDRESS")
 
+# 피드백을 받을 주소. Gmail 플러스 주소(you+techletter@gmail.com)를 쓰면 일상
+# 메일과 섞이지 않고, IMAP 에서 이 주소로 정확히 필터링할 수 있다.
+# Reply-To 헤더와 mailto 링크에 이 주소를 넣어야 답장이 태그를 달고 돌아온다
+# (그냥 To 에만 넣으면 답장 시 To 가 발신 주소로 바뀌면서 태그가 사라진다).
+FEEDBACK_ADDRESS = os.environ.get("FEEDBACK_ADDRESS") or RECIPIENT_EMAIL
+
 # 앱 비밀번호 방식. OAuth 동의 화면/심사/토큰 만료가 없고 secret 이 2개로 끝난다.
 GMAIL_ADDRESS = os.environ.get("GMAIL_ADDRESS")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")

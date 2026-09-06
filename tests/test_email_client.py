@@ -51,3 +51,51 @@ def test_imap_date_format():
 def test_imap_date_falls_back_when_empty():
     # 형식이 깨져도 예외 없이 기본값(30일 전)을 쓴다.
     assert len(_imap_date("")) == 11
+
+
+# --- 플러스 주소 -----------------------------------------------------------
+
+def test_send_sets_reply_to_feedback_address(monkeypatch):
+    """Reply-To 가 없으면 답장 시 To 가 발신 주소로 바뀌어 태그가 사라진다."""
+    from src import config, email_client
+
+    sent = {}
+
+    class _SMTP:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def login(self, *a): pass
+        def send_message(self, message): sent["message"] = message
+
+    monkeypatch.setattr(config, "GMAIL_ADDRESS", "me@gmail.com")
+    monkeypatch.setattr(config, "GMAIL_APP_PASSWORD", "pw")
+    monkeypatch.setattr(email_client.smtplib, "SMTP_SSL", _SMTP)
+
+    email_client.send("제목", "<p>html</p>", "text",
+                      "me@gmail.com", "me+techletter@gmail.com")
+
+    message = sent["message"]
+    assert message["To"] == "me@gmail.com"
+    assert message["Reply-To"] == "me+techletter@gmail.com"
+    assert message["Message-ID"]
+
+
+def test_send_defaults_reply_to_recipient(monkeypatch):
+    from src import config, email_client
+
+    sent = {}
+
+    class _SMTP:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def login(self, *a): pass
+        def send_message(self, message): sent["message"] = message
+
+    monkeypatch.setattr(config, "GMAIL_ADDRESS", "me@gmail.com")
+    monkeypatch.setattr(config, "GMAIL_APP_PASSWORD", "pw")
+    monkeypatch.setattr(email_client.smtplib, "SMTP_SSL", _SMTP)
+
+    email_client.send("제목", "<p>h</p>", "t", "me@gmail.com")
+    assert sent["message"]["Reply-To"] == "me@gmail.com"
