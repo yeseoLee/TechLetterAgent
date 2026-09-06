@@ -3,7 +3,8 @@
 순서:
   1) Gmail 답장 확인 → 프로필/메모 반영
   2) 임베딩 유사도로 후보 Top-30 (기추천 제외)
-  3) LLM 재검토로 강추 3 + 혹시나 2 확정
+  3) 추천 3편 확정 (유사도 상위 2편 + LLM 이 고른 넓혀보기 1편)
+  3-1) 새 채널 후보 탐색
   4) 이메일 포맷팅
   5) Gmail 발송
   6) recommendations.json 갱신
@@ -16,7 +17,7 @@ import logging
 from datetime import datetime, timezone
 
 from . import (cluster_agent, config, content_store, discovery_agent,
-               memory_agent, recommendation_agent)
+               memory_agent, newsletter_agent, recommendation_agent)
 
 log = logging.getLogger(__name__)
 
@@ -88,7 +89,7 @@ def main(dry_run: bool = False, feedback_only: bool = False) -> None:
         return
 
     # 4~6) 포맷팅 → 발송 → 이력 저장.
-    from . import email_client, newsletter_agent
+    from . import email_client
 
     # 추천 이력 id 를 먼저 확정해야 mailto 피드백 링크에 넣을 수 있다.
     history = content_store.load(config.RECOMMENDATIONS, []) or []
@@ -186,9 +187,9 @@ def _print_picks(picks: list[dict], by_id: dict, candidates: list[dict]) -> None
     similarity = {c["id"]: c.get("similarity") for c in candidates}
     for pick in picks:
         video = by_id.get(pick["video_id"], {})
-        mark = "강추" if pick["tier"] == "strong" else "혹시나"
         log.info("[%s] %s (유사도 %.3f, 난이도 %s)",
-                 mark, video.get("title", "?")[:55],
+                 newsletter_agent.TIER_LABEL.get(pick["tier"], pick["tier"]),
+                 video.get("title", "?")[:55],
                  similarity.get(pick["video_id"]) or 0.0, video.get("difficulty", "?"))
         log.info("       %s", pick["reason_text"])
 
