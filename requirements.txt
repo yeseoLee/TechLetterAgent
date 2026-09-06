@@ -1,6 +1,5 @@
 openai>=1.60.0
 numpy>=2.0.0
-feedparser>=6.0.11
 yt-dlp>=2025.1.15
 google-api-python-client>=2.150.0
 google-auth>=2.35.0

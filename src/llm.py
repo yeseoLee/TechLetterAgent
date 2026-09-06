@@ -3,8 +3,8 @@
 무료 티어는 분당/일일 요청 수 제한이 걸리므로 호출 간 최소 간격을 두고,
 429 와 빈 응답에 대해 지수 백오프로 재시도한다.
 
-임베딩과 STT 는 OpenRouter 에 해당 모델이 없어 OpenAI 를 직접 호출한다
-(`article_analyzer` 참고).
+임베딩은 OpenRouter 에 해당 모델이 없어 OpenAI 를 직접 호출한다
+(article_analyzer.embed 참고).
 """
 import json
 import random

@@ -11,8 +11,7 @@
 
 ```
 collect.yml (매일)
-  채널·재생목록 RSS → 신규 영상 감지 → 사전 필터(비발표 콘텐츠 제거)
-  → yt-dlp 자막 추출 (자막 없으면 건너뜀)
+  YouTube Data API → 신규 영상 + 길이 + 설명 → 사전 필터(비발표 콘텐츠 제거)
   → OpenRouter 무료 모델로 요약/난이도/타겟대상 생성 → 임베딩 → data/videos.json 커밋
 
 send.yml (월/수/금)
@@ -34,10 +33,6 @@ LLM 호출은 전부 **OpenRouter 무료 모델**을 씁니다. 슬러그는 `sr
 | 요약 · 난이도 · 답장 파싱 | `google/gemma-4-31b-it:free` | 31B instruct, 멀티링구얼. 양 많은 단순 작업용 |
 | Top-30 추천 재검토 | `z-ai/glm-5.2:free` | reasoning 모델, 256K ctx. 판단 품질이 중요한 단계 |
 | 임베딩 | `text-embedding-3-small` (OpenAI) | OpenRouter 에 임베딩 모델이 없어 유일하게 유료. $0.02/1M 토큰 |
-| STT | `whisper-1` (OpenAI) | **기본 비활성**. 자막 없는 영상은 건너뜁니다 |
-
-Whisper 는 유료($0.006/분)라 기본적으로 꺼져 있습니다. 자막 없는 영상까지 처리하려면
-워크플로우에 `ENABLE_WHISPER_FALLBACK: "1"` 을 추가하세요.
 
 ### 무료 모델 rate limit
 
@@ -81,7 +76,16 @@ python scripts/resolve_channel_id.py https://www.youtube.com/@naver_d2
 잘못 걸러지는 영상이 보이면 `prefilter.py` 의 `TITLE_DENY` / `TITLE_ALLOW` 를 조정하세요.
 `TITLE_ALLOW` 가 `TITLE_DENY` 보다 우선합니다.
 
-### 3. Gmail OAuth 설정
+### 3. YouTube Data API 키
+
+1. [Google Cloud Console](https://console.cloud.google.com/) 에서 프로젝트 생성 (Gmail 과 같은 프로젝트를 써도 됩니다)
+2. **API 및 서비스 → 라이브러리** 에서 *YouTube Data API v3* 사용 설정
+3. **사용자 인증 정보 → API 키** 생성 후 `YOUTUBE_API_KEY` secret 에 등록
+
+무료 quota 는 하루 10,000 units 입니다. 이 프로젝트는 소스 8개 기준 하루 20 units
+내외를 쓰므로 여유가 큽니다.
+
+### 4. Gmail OAuth 설정
 
 1. [Google Cloud Console](https://console.cloud.google.com/) 에서 프로젝트 생성
 2. **API 및 서비스 → 라이브러리** 에서 *Gmail API* 사용 설정
@@ -97,12 +101,13 @@ python scripts/gmail_oauth_setup.py
 
 출력된 세 값을 GitHub Secrets 에 등록합니다.
 
-### 4. GitHub Secrets
+### 5. GitHub Secrets
 
 | Secret | 용도 |
 | --- | --- |
 | `OPENROUTER_API_KEY` | LLM 호출 전부 (무료 모델). [openrouter.ai/keys](https://openrouter.ai/keys) 에서 발급 |
 | `OPENAI_API_KEY` | 임베딩(`text-embedding-3-small`). OpenRouter 에 임베딩 모델이 없어 필요 |
+| `YOUTUBE_API_KEY` | YouTube Data API v3. 영상 발견 + 길이 + 설명 |
 | `GMAIL_CLIENT_ID` | Gmail OAuth |
 | `GMAIL_CLIENT_SECRET` | Gmail OAuth |
 | `GMAIL_REFRESH_TOKEN` | Gmail OAuth |
@@ -110,7 +115,7 @@ python scripts/gmail_oauth_setup.py
 
 레포 Settings → Secrets and variables → Actions 에서 등록합니다.
 
-### 5. Actions 쓰기 권한
+### 6. Actions 쓰기 권한
 
 Settings → Actions → General → Workflow permissions 를 **Read and write permissions** 로 설정해야
 워크플로우가 `data/` 변경을 커밋할 수 있습니다.
@@ -153,8 +158,14 @@ python -m pytest tests/ -q
 
 ## 알려진 제약
 
-- **GitHub Actions IP 차단**: 유튜브가 데이터센터 IP 에서의 자막 요청을 막는 경우가 있습니다.
-  자막 추출에 실패한 영상은 건너뜁니다 (`ENABLE_WHISPER_FALLBACK=1` 이면 Whisper 로 폴백).
+- **자막을 쓰지 않습니다.** GitHub Actions 의 데이터센터 IP 에서 yt-dlp 는 전면 봇 차단되고
+  (`Sign in to confirm you're not a bot`, player_client 4종 모두 실패), RSS 도 404 로
+  스로틀링됩니다. 진단 결과는 `scripts/diagnose_youtube_access.py` 로 재현할 수 있습니다.
+  그래서 발견·길이·설명을 YouTube Data API 로 받고, **발표자가 직접 쓴 영상 설명**을
+  분석 입력으로 씁니다. 컨퍼런스 채널은 설명에 세션 초록·발표 대상·목차를 구조화해 넣는
+  경우가 많고, 자동 자막보다 오히려 정확합니다.
+  로컬(주거용 IP)에서는 yt-dlp 가 동작하므로 `--with-transcript` 로 자막을 함께 넣을 수 있습니다.
+- **설명이 부실한 영상은 건너뜁니다.** 설명 40자 미만이면 분석 근거가 없다고 보고 제외합니다.
 - **무료 모델 품질**: 요약·추천 이유의 한국어 품질이 유료 모델보다 떨어질 수 있습니다.
   `src/config.py` 의 `MODEL_CHEAP` / `MODEL_SMART` 만 바꾸면 유료 모델로 전환됩니다.
 - **공개 레포**: `data/` 에 프로필·관심사·피드백 답장 원문이 커밋되어 공개됩니다.

@@ -33,14 +33,14 @@ LLM_MIN_INTERVAL_SECONDS = 3.5
 # 일일 요청 한도를 넘기지 않도록 collect 1회당 분석할 영상 수를 제한한다.
 MAX_ANALYSIS_PER_RUN = 15
 
-# --- 임베딩 / STT ---------------------------------------------------------
-# OpenRouter 는 임베딩·Whisper 모델을 제공하지 않는다(2026-09 기준 무료/유료 모두 0건).
-# 임베딩은 OpenAI 를 직접 호출한다. $0.02/1M 토큰으로 사실상 무시할 만한 비용.
+# --- 임베딩 --------------------------------------------------------------
+# OpenRouter 는 임베딩 모델을 제공하지 않아(2026-09 기준 무료/유료 모두 0건)
+# OpenAI 를 직접 호출한다. $0.02/1M 토큰으로 사실상 무시할 만한 비용.
 EMBEDDING_MODEL = "text-embedding-3-small"
 
-# Whisper STT 는 유료($0.006/분)라 기본 비활성. 자막 없는 영상은 건너뛴다.
-ENABLE_WHISPER_FALLBACK = os.environ.get("ENABLE_WHISPER_FALLBACK") == "1"
-STT_MODEL = "whisper-1"
+# --- 수집 ----------------------------------------------------------------
+# 소스당 조회할 최근 영상 수. YouTube Data API 는 50개까지 1 quota unit 이다.
+PER_SOURCE_LIMIT = 20
 
 # 추천 구성
 TOP_K_CANDIDATES = 30
@@ -49,6 +49,7 @@ N_MAYBE = 2
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
 RECIPIENT_EMAIL = os.environ.get("RECIPIENT_EMAIL")
 
 GMAIL_CLIENT_ID = os.environ.get("GMAIL_CLIENT_ID")
