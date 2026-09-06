@@ -1,1 +1,20 @@
-[]
+[
+  {
+    "id": "fb_001",
+    "message_id": "<CAK8pi0_3dV57SXBbzU1Hdvh9oLF5kGOjGaZPcD06YZhqUOGzVA@mail.gmail.com>",
+    "recommendation_id": "rec_001",
+    "type": "like",
+    "raw_text": "",
+    "applied_profile_diff": {},
+    "created_at": "2026-09-06T15:31:10+00:00"
+  },
+  {
+    "id": "fb_002",
+    "message_id": "<CAK8pi0-YC2Mhbi8A0mJ4U6MnRf1qdzz+MU-8H9z82RwAakqJ_g@mail.gmail.com>",
+    "recommendation_id": "rec_002",
+    "type": "like",
+    "raw_text": "",
+    "applied_profile_diff": {},
+    "created_at": "2026-09-06T15:31:10+00:00"
+  }
+]
