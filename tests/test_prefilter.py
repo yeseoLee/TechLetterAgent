@@ -38,3 +38,25 @@ def test_duration_bounds():
     assert not rule_check(_v("좋은 발표", duration=90))[0]
     assert not rule_check(_v("좋은 발표", duration=5 * 60 * 60))[0]
     assert rule_check(_v("좋은 발표", duration=None))[0]
+
+
+def test_real_feed_samples():
+    """실제 피드에서 확인한 케이스 (수집 검증 때 얻은 실제 제목/길이)."""
+    drops = [
+        ("공익을 위해 공개하는 청음회 현장 모먼트🧡", 12),
+        ("[ifkakao2021] if(kakao)2021 Overview", 107),
+        ("WOOWACON 2025 현장 스케치 #우아콘2025", 119),
+        ("[당근X박브금] 찐당근 비하인드 대방출🔥🥕🔥", 140),
+        ("[Playlist] 커피 향 가득☕️ Park BGM 카페 플레이리스트", 1283),
+    ]
+    for title, duration in drops:
+        assert not rule_check(_v(title, duration))[0], f"걸러졌어야 함: {title}"
+
+    keeps = [
+        ("오프닝 키노트 #우아콘2025 #우아한형제들", 1003),
+        ("AI 네이티브 회사를 향한 새로운 항해 #우아콘2025", 2126),
+        ("[ifkakao2021] 카카오지갑 지갑서비스의 현황", 688),
+        ("AI 에이전트를 위한 Playwright E2E 테스트 하네스 구축하기", 1931),
+    ]
+    for title, duration in keeps:
+        assert rule_check(_v(title, duration))[0], f"통과했어야 함: {title}"
