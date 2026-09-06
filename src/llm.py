@@ -2,8 +2,7 @@
 
 429/5xx 와 빈 응답은 지수 백오프로 재시도한다.
 
-임베딩은 OpenRouter 에 해당 모델이 없어 OpenAI 를 직접 호출한다
-(article_analyzer.embed 참고).
+임베딩도 같은 클라이언트를 쓴다 (article_analyzer.embed 참고).
 """
 import json
 import logging

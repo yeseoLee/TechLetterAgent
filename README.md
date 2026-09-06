@@ -26,20 +26,24 @@ send.yml (월/수/금)
 
 ## 모델
 
-LLM 호출은 전부 **OpenRouter** 를 경유합니다. 슬러그는 `src/config.py` 상수라 언제든 교체 가능합니다.
+LLM 호출과 임베딩을 전부 **OpenRouter** 하나로 처리합니다. 외부 API 키는 OpenRouter 와
+YouTube 두 개뿐입니다.
+
+임베딩 모델 목록은 chat 모델과 분리되어 있습니다 — `/api/v1/models` 가 아니라
+`/api/v1/embeddings/models` 를 봐야 합니다. 슬러그는 `src/config.py` 상수라 언제든 교체 가능합니다.
 
 | 용도 | 모델 | 비고 |
 | --- | --- | --- |
 | 요약 · 난이도 · 답장 파싱 | `deepseek/deepseek-v4-flash-0731` | 1.31M ctx. $0.05/M in, $0.10/M out |
 | Top-30 추천 재검토 | `deepseek/deepseek-v4-flash-0731` | 같은 모델. 추천 품질이 아쉬우면 이쪽만 더 센 모델로 올립니다 |
-| 임베딩 | `text-embedding-3-small` (OpenAI) | OpenRouter 에 임베딩 모델이 없어 별도. $0.02/1M 토큰 |
+| 임베딩 | `qwen/qwen3-embedding-8b` | 멀티링구얼, 32K ctx. $0.01/M 토큰 |
 
 ### 비용
 
 유료 슬러그라 **OpenRouter 계정에 크레딧이 있어야** 동작합니다. 무료 티어의 분당/일일
 요청 수 제한은 없습니다.
 
-영상 1건 분석에 입력 1~2K 토큰, 출력 300 토큰 수준이라 100건을 돌려도 몇 센트입니다.
+영상 1건 분석에 입력 1~2K 토큰, 출력 300 토큰, 임베딩 1K 토큰 수준이라 100건을 돌려도 몇 센트입니다.
 `MAX_ANALYSIS_PER_RUN`(기본 50)은 비용 제한이 아니라 한 번에 과하게 도는 것을 막는
 안전장치입니다.
 
@@ -100,8 +104,7 @@ python scripts/gmail_oauth_setup.py
 
 | Secret | 용도 |
 | --- | --- |
-| `OPENROUTER_API_KEY` | LLM 호출 전부 (무료 모델). [openrouter.ai/keys](https://openrouter.ai/keys) 에서 발급 |
-| `OPENAI_API_KEY` | 임베딩(`text-embedding-3-small`). OpenRouter 에 임베딩 모델이 없어 필요 |
+| `OPENROUTER_API_KEY` | LLM 호출과 임베딩 전부. [openrouter.ai/keys](https://openrouter.ai/keys) 에서 발급 |
 | `YOUTUBE_API_KEY` | YouTube Data API v3. 영상 발견 + 길이 + 설명 |
 | `GMAIL_CLIENT_ID` | Gmail OAuth |
 | `GMAIL_CLIENT_SECRET` | Gmail OAuth |

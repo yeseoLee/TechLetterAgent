@@ -38,9 +38,11 @@ LLM_TIMEOUT_SECONDS = 90
 MAX_ANALYSIS_PER_RUN = 50
 
 # --- 임베딩 --------------------------------------------------------------
-# OpenRouter 는 임베딩 모델을 제공하지 않아(2026-09 기준 무료/유료 모두 0건)
-# OpenAI 를 직접 호출한다. $0.02/1M 토큰으로 사실상 무시할 만한 비용.
-EMBEDDING_MODEL = "text-embedding-3-small"
+# 임베딩도 OpenRouter 를 쓴다. 목록은 /api/v1/embeddings/models 에 따로 있다
+# (chat 모델 목록인 /api/v1/models 에는 나오지 않는다).
+# Qwen3 임베딩은 멀티링구얼이라 한/영 혼재 텍스트에 맞고 $0.01/M 토큰이다.
+EMBEDDING_MODEL = "qwen/qwen3-embedding-8b"
+EMBEDDING_INPUT_LIMIT = 8000
 
 # --- 수집 ----------------------------------------------------------------
 # 소스당 조회할 최근 영상 수. YouTube Data API 는 50개까지 1 quota unit 이다.
@@ -52,7 +54,6 @@ N_STRONG = 3
 N_MAYBE = 2
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
 RECIPIENT_EMAIL = os.environ.get("RECIPIENT_EMAIL")
 

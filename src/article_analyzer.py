@@ -4,13 +4,9 @@
 발표 대상, 목차를 구조화해 넣는 경우가 많다. 자막을 쓰지 않는 이유는
 content_agent 의 모듈 주석 참고. 자막이 있으면(로컬 실행) 함께 넣는다.
 
-요약/난이도/타겟 생성: OpenRouter 무료 모델 (config.MODEL_CHEAP).
-임베딩: OpenRouter 가 임베딩 모델을 제공하지 않아 OpenAI 를 직접 호출한다.
+요약/난이도/타겟 생성과 임베딩 모두 OpenRouter 를 경유한다.
 """
 import logging
-from functools import lru_cache
-
-from openai import OpenAI
 
 from . import config, llm
 
@@ -35,14 +31,6 @@ _SYSTEM = """당신은 개발자 컨퍼런스 발표 영상을 분석합니다.
   "target_audience": "어떤 사람에게 맞는지 한 줄 (예: 3년차 이하 백엔드, 프론트엔드 전반)",
   "topics": ["핵심 주제 키워드 3~6개"]
 }"""
-
-
-@lru_cache(maxsize=1)
-def openai_client() -> OpenAI:
-    """임베딩 전용 OpenAI 클라이언트 (OpenRouter 가 아님)."""
-    if not config.OPENAI_API_KEY:
-        raise RuntimeError("OPENAI_API_KEY 가 설정되지 않았습니다.")
-    return OpenAI(api_key=config.OPENAI_API_KEY)
 
 
 def _trim(transcript: str) -> str:
@@ -80,9 +68,9 @@ def analyze(video: dict) -> dict:
 
 
 def embed(text: str) -> list[float]:
-    """OpenAI text-embedding-3-small 임베딩."""
-    response = openai_client().embeddings.create(
-        model=config.EMBEDDING_MODEL, input=text[:8000]
+    """OpenRouter 임베딩. 목록은 /api/v1/embeddings/models 에 따로 있다."""
+    response = llm.client().embeddings.create(
+        model=config.EMBEDDING_MODEL, input=text[:config.EMBEDDING_INPUT_LIMIT]
     )
     return response.data[0].embedding
 
