@@ -91,7 +91,7 @@ def llm_check(video: dict) -> tuple[bool, str]:
     try:
         result = llm.complete_json(
             prompt, model=config.MODEL_CHEAP, system=_LLM_SYSTEM,
-            max_tokens=200, temperature=0,
+            max_tokens=config.TOKENS_FILTER, temperature=0,
         )
     except Exception as exc:
         return True, f"LLM 판정 실패, 통과: {exc}"

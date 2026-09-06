@@ -32,8 +32,15 @@ LLM_MAX_RETRIES = 4
 LLM_RETRY_BASE_SECONDS = 1.5
 
 # SDK 기본 타임아웃은 10분이라 응답 없는 요청 하나가 워크플로우 전체를 잡아먹는다.
-# 이 용도는 짧은 JSON 응답이라 넉넉히 잡아도 이 정도면 충분하다.
-LLM_TIMEOUT_SECONDS = 90
+LLM_TIMEOUT_SECONDS = 120
+
+# max_tokens 예산. deepseek-v4-flash 는 reasoning 모델이라 max_tokens 에 추론
+# 토큰이 포함된다. 짜게 잡으면 추론만 하다 예산이 끝나 content 가 빈 채로
+# finish_reason=length 가 돌아온다(실측: 판정 하나에 추론 7,000자 이상 소비).
+# 출력 $0.10/M 이라 넉넉히 잡아도 호출당 0.2센트 수준이다.
+TOKENS_FILTER = 4000        # 발표 여부 yes/no 판정
+TOKENS_ANALYZE = 8000       # 요약·난이도·대상·주제 생성
+TOKENS_RECOMMEND = 16000    # 후보 30개 재검토
 
 # collect 1회당 분석할 영상 수 상한. 한 번에 과하게 도는 것을 막는 안전장치.
 MAX_ANALYSIS_PER_RUN = 50

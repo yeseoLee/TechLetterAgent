@@ -84,7 +84,8 @@ def complete(prompt: str, *, model: str, system: str | None = None,
 
 
 def complete_json(prompt: str, *, model: str, system: str | None = None,
-                  max_tokens: int = 4096, temperature: float = 0.3) -> dict | list:
+                  max_tokens: int = config.TOKENS_ANALYZE,
+                  temperature: float = 0.3) -> dict | list:
     """JSON 응답을 요구하고 파싱해서 반환한다.
 
     OpenRouter 는 `response_format` 지원이 프로바이더마다 제각각이라,

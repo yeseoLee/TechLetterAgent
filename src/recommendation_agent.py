@@ -81,7 +81,7 @@ def recommend(profile: dict, notes: list[dict], candidates: list[dict],
         prompt,
         model=config.MODEL_SMART,
         system=_SYSTEM.format(n_strong=n_strong, n_maybe=n_maybe),
-        max_tokens=2000,
+        max_tokens=config.TOKENS_RECOMMEND,
         temperature=0.4,
     )
 

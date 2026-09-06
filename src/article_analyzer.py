@@ -54,7 +54,7 @@ def analyze(video: dict) -> dict:
         parts.append(f"\n자막:\n{_trim(transcript)}")
     prompt = "\n".join(parts)
     result = llm.complete_json(
-        prompt, model=config.MODEL_CHEAP, system=_SYSTEM, max_tokens=1200, temperature=0.2
+        prompt, model=config.MODEL_CHEAP, system=_SYSTEM, max_tokens=config.TOKENS_ANALYZE, temperature=0.2
     )
     if not isinstance(result, dict):
         raise ValueError(f"분석 응답이 객체가 아님: {type(result)}")
