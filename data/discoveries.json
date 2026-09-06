@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "channel_id": "UCrDwWp7EBBv4NwvScIpBDOA",
+    "name": "Anthropic",
+    "language": "en",
+    "subscriber_count": 789000,
+    "video_count": 175,
+    "reason": "AI/ML 엔지니어로서 LLM 앱과 AI 에이전트에 관심이 높은데, Anthropic 채널은 Claude 및 에이전트 설계에 관한 개발자 대상 기술 강연을 꾸준히 제공합니다. 이미 구독 중인 국내 채널과 겹치지 않으면서 Python 기반 AI 개발에 실질적인 도움이 됩니다.",
+    "proposed_at": "2026-09-06T16:04:28+00:00",
+    "answer": null
+  }
+]
