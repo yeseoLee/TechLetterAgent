@@ -55,11 +55,22 @@ def complete(prompt: str, *, model: str, system: str | None = None,
                 max_tokens=max_tokens,
                 temperature=temperature,
             )
-            text = (response.choices[0].message.content or "").strip()
+            choice = response.choices[0]
+            text = (choice.message.content or "").strip()
             if text:
                 log.info("LLM %s %.1fs %d자", model, time.monotonic() - started, len(text))
                 return text
-            last_error = ValueError("빈 응답")
+
+            # 빈 content 는 원인이 여러 가지다(추론 토큰이 예산을 다 씀,
+            # finish_reason=length, 프로바이더가 reasoning 필드에만 채움).
+            # 무엇 때문인지 알아야 고칠 수 있으므로 메타데이터를 남긴다.
+            reasoning = getattr(choice.message, "reasoning", None)
+            usage = response.usage
+            last_error = ValueError(
+                f"빈 응답 (finish_reason={choice.finish_reason}, "
+                f"reasoning={len(reasoning) if reasoning else 0}자, "
+                f"completion_tokens={getattr(usage, 'completion_tokens', '?')})"
+            )
         except (RateLimitError, APIError) as exc:
             last_error = exc
         log.warning("LLM 시도 %d/%d 실패 (%.1fs): %s",
