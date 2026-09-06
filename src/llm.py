@@ -45,6 +45,8 @@ def complete(prompt: str, *, model: str, system: str | None = None,
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
 
+    extra = {"response_format": {"type": "json_object"}} if json_mode else {}
+
     last_error: Exception | None = None
     for attempt in range(config.LLM_MAX_RETRIES):
         started = time.monotonic()
@@ -54,6 +56,7 @@ def complete(prompt: str, *, model: str, system: str | None = None,
                 messages=messages,
                 max_tokens=max_tokens,
                 temperature=temperature,
+                **extra,
             )
             choice = response.choices[0]
             text = (choice.message.content or "").strip()
@@ -64,15 +67,28 @@ def complete(prompt: str, *, model: str, system: str | None = None,
             # 빈 content 는 원인이 여러 가지다(추론 토큰이 예산을 다 씀,
             # finish_reason=length, 프로바이더가 reasoning 필드에만 채움).
             # 무엇 때문인지 알아야 고칠 수 있으므로 메타데이터를 남긴다.
-            reasoning = getattr(choice.message, "reasoning", None)
+            reasoning = getattr(choice.message, "reasoning", None) or ""
             usage = response.usage
+
+            # reasoning 안에 답이 들어 있으면 건져 쓴다. 이상적이진 않지만
+            # 재시도 4번을 날리는 것보다는 낫다.
+            if reasoning and _looks_like_json(reasoning):
+                log.warning("content 가 비어 reasoning 에서 JSON 을 건집니다 (%d자)",
+                            len(reasoning))
+                return reasoning
+
             last_error = ValueError(
                 f"빈 응답 (finish_reason={choice.finish_reason}, "
-                f"reasoning={len(reasoning) if reasoning else 0}자, "
+                f"reasoning={len(reasoning)}자, "
                 f"completion_tokens={getattr(usage, 'completion_tokens', '?')})"
             )
         except (RateLimitError, APIError) as exc:
             last_error = exc
+            # response_format 을 받지 않는 프로바이더가 있다. 400 이면 끄고 재시도한다.
+            if extra and getattr(exc, "status_code", None) == 400:
+                log.warning("response_format 미지원으로 보여 json_mode 를 끕니다: %s",
+                            str(exc)[:120])
+                extra = {}
         log.warning("LLM 시도 %d/%d 실패 (%.1fs): %s",
                     attempt + 1, config.LLM_MAX_RETRIES, time.monotonic() - started,
                     str(last_error)[:150])
@@ -98,8 +114,18 @@ def complete_json(prompt: str, *, model: str, system: str | None = None,
         system=f"{system}\n\n{guard}" if system else guard,
         max_tokens=max_tokens,
         temperature=temperature,
+        json_mode=True,
     )
     return parse_json(raw)
+
+
+def _looks_like_json(text: str) -> bool:
+    """reasoning 텍스트 안에 파싱 가능한 JSON 이 들어 있는지 본다."""
+    try:
+        parse_json(text)
+        return True
+    except (ValueError, json.JSONDecodeError):
+        return False
 
 
 def parse_json(raw: str) -> dict | list:
