@@ -11,18 +11,46 @@
 
 ```
 collect.yml (매일)
-  채널 RSS → 신규 영상 감지 → yt-dlp 자막 추출 (없으면 Whisper STT)
-  → Haiku 4.5 로 요약/난이도/타겟대상 생성 → 임베딩 → data/videos.json 커밋
+  채널 RSS → 신규 영상 감지 → yt-dlp 자막 추출 (자막 없으면 건너뜀)
+  → OpenRouter 무료 모델로 요약/난이도/타겟대상 생성 → 임베딩 → data/videos.json 커밋
 
 send.yml (월/수/금)
-  1. Gmail 답장 조회 → Haiku 4.5 파싱 → 프로필/메모 갱신
+  1. Gmail 답장 조회 → LLM 파싱 → 프로필/메모 갱신
   2. 프로필 임베딩 vs 영상 임베딩 코사인 유사도 → 후보 Top-30 (기추천 영상 제외)
-  3. Sonnet 5 재검토 → 강추 3개 + 혹시나 2개 확정 + 추천 이유 생성
+  3. reasoning 모델 재검토 → 강추 3개 + 혹시나 2개 확정 + 추천 이유 생성
   4. 이메일 포맷팅 (제목 + 1~2줄 요약 + 추천 이유 + 👍/👎 mailto)
   5. Gmail API 발송 → data/recommendations.json 커밋
 ```
 
 피드백 루프는 **답장 기반**입니다. 오픈/클릭 트래킹은 상시 응답 서버가 필요해 1차 범위에서 제외했습니다.
+
+## 모델
+
+LLM 호출은 전부 **OpenRouter 무료 모델**을 씁니다. 슬러그는 `src/config.py` 상수라 언제든 교체 가능합니다.
+
+| 용도 | 모델 | 비고 |
+| --- | --- | --- |
+| 요약 · 난이도 · 답장 파싱 | `google/gemma-4-31b-it:free` | 31B instruct, 멀티링구얼. 양 많은 단순 작업용 |
+| Top-30 추천 재검토 | `z-ai/glm-5.2:free` | reasoning 모델, 256K ctx. 판단 품질이 중요한 단계 |
+| 임베딩 | `text-embedding-3-small` (OpenAI) | OpenRouter 에 임베딩 모델이 없어 유일하게 유료. $0.02/1M 토큰 |
+| STT | `whisper-1` (OpenAI) | **기본 비활성**. 자막 없는 영상은 건너뜁니다 |
+
+Whisper 는 유료($0.006/분)라 기본적으로 꺼져 있습니다. 자막 없는 영상까지 처리하려면
+워크플로우에 `ENABLE_WHISPER_FALLBACK: "1"` 을 추가하세요.
+
+### 무료 모델 rate limit
+
+OpenRouter `:free` 슬러그는 토큰 과금이 0 인 대신 **계정 단위 요청 수 제한**이 걸립니다
+(분당 요청 수, 그리고 일일 요청 수 — 일일 한도는 계정에 충전된 크레딧 잔액에 따라 달라집니다).
+정확한 현재 한도는 [OpenRouter API Rate Limits 문서](https://openrouter.ai/docs/api-reference/limits)를 확인하세요.
+
+코드 쪽 대응:
+
+- `src/llm.py` 가 호출 간 최소 간격(`LLM_MIN_INTERVAL_SECONDS`)을 지키고, 429 에 지수 백오프로 재시도합니다.
+- `MAX_ANALYSIS_PER_RUN`(기본 15)으로 collect 1회당 LLM 호출 수를 제한합니다.
+  신규 영상이 이보다 많으면 다음 실행으로 밀립니다.
+
+한도에 계속 걸리면 `config.py` 의 슬러그를 유료 모델로 바꾸는 게 가장 간단한 해법입니다.
 
 ## 초기 설정
 
@@ -61,8 +89,8 @@ python scripts/gmail_oauth_setup.py
 
 | Secret | 용도 |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | Claude API (Haiku 4.5 요약·파싱, Sonnet 5 추천 재검토) |
-| `OPENAI_API_KEY` | 임베딩(`text-embedding-3-small`) + Whisper STT |
+| `OPENROUTER_API_KEY` | LLM 호출 전부 (무료 모델). [openrouter.ai/keys](https://openrouter.ai/keys) 에서 발급 |
+| `OPENAI_API_KEY` | 임베딩(`text-embedding-3-small`). OpenRouter 에 임베딩 모델이 없어 필요 |
 | `GMAIL_CLIENT_ID` | Gmail OAuth |
 | `GMAIL_CLIENT_SECRET` | Gmail OAuth |
 | `GMAIL_REFRESH_TOKEN` | Gmail OAuth |
@@ -105,7 +133,9 @@ python -m src.run_send
 ## 알려진 제약
 
 - **GitHub Actions IP 차단**: 유튜브가 데이터센터 IP 에서의 자막 요청을 막는 경우가 있습니다.
-  자막 추출 실패 시 Whisper STT 로 폴백하며, 그마저 막히면 해당 영상은 건너뜁니다.
+  자막 추출에 실패한 영상은 건너뜁니다 (`ENABLE_WHISPER_FALLBACK=1` 이면 Whisper 로 폴백).
+- **무료 모델 품질**: 요약·추천 이유의 한국어 품질이 유료 모델보다 떨어질 수 있습니다.
+  `src/config.py` 의 `MODEL_CHEAP` / `MODEL_SMART` 만 바꾸면 유료 모델로 전환됩니다.
 - **공개 레포**: `data/` 에 프로필·관심사·피드백 답장 원문이 커밋되어 공개됩니다.
   비공개로 바꾸려면 `gh repo edit --visibility private --accept-visibility-change-consequences`.
 
