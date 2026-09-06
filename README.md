@@ -90,7 +90,12 @@ python scripts/resolve_channel_id.py https://www.youtube.com/@naver_d2
 2. **API 및 서비스 → 라이브러리** 에서 *Gmail API* 사용 설정
 3. **OAuth 동의 화면** 구성 — User Type `외부`, 테스트 사용자에 본인 Gmail 주소 추가
    (게시하지 않고 테스트 모드로 두면 refresh token 이 7일마다 만료되므로, **앱을 "프로덕션"으로 게시**하세요. 개인 용도라 심사 없이 게시 가능합니다.)
-4. **사용자 인증 정보 → OAuth 클라이언트 ID → 데스크톱 앱** 생성 후 JSON 을 레포 루트에 `credentials.json` 으로 저장
+4. **사용자 인증 정보 → OAuth 클라이언트 ID** 생성 후 JSON 을 레포 루트에 `credentials.json` 으로 저장
+
+   애플리케이션 유형은 반드시 **데스크톱 앱** 이어야 합니다. 웹 애플리케이션으로 만들면
+   `Access blocked: This app's request is invalid` 로 막힙니다 — 인증 스크립트가
+   `http://localhost:<포트>/` 로 콜백을 받는데 웹 클라이언트에는 그 리디렉션 URI 가
+   등록돼 있지 않기 때문입니다. (`scripts/gmail_oauth_setup.py` 가 실행 전에 검사합니다.)
 5. 로컬에서 1회 인증:
 
 ```bash
