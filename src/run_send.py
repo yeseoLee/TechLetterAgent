@@ -60,9 +60,17 @@ def main(dry_run: bool = False, feedback_only: bool = False) -> None:
         log.error("추천할 후보가 없습니다.")
         return
 
-    # 3) LLM 재검토.
-    picks = recommendation_agent.recommend(profile, notes, candidates)
+    # 3) LLM 재검토. 지난 좋아요/싫어요를 함께 넘겨 루프를 닫는다.
     by_id = {v["id"]: v for v in videos}
+    signals = recommendation_agent.collect_signals(
+        content_store.load(config.FEEDBACK_LOG, []) or [],
+        content_store.load(config.RECOMMENDATIONS, []) or [],
+        by_id,
+    )
+    if signals["liked"] or signals["disliked"]:
+        log.info("반영할 반응: 좋아요 %d건, 싫어요 %d건",
+                 len(signals["liked"]), len(signals["disliked"]))
+    picks = recommendation_agent.recommend(profile, notes, candidates, signals)
 
     _print_picks(picks, by_id, candidates)
 

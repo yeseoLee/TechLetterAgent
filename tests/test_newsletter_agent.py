@@ -37,7 +37,7 @@ def test_render_includes_every_pick():
 
 def test_render_separates_tiers():
     _, html, _ = render(PICKS, VIDEOS, "me@example.com")
-    assert html.index("강력 추천") < html.index("혹시나 해서")
+    assert html.index("추천") < html.index("함께 볼 만한")
 
 
 def test_render_escapes_html_in_titles():

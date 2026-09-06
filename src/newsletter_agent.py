@@ -12,7 +12,7 @@ from urllib.parse import quote
 # 답장 제목 규칙. feedback_agent 가 이 접두사로 정형 피드백을 알아본다.
 SUBJECT_TAG = "[TLA]"
 
-TIER_LABEL = {"strong": "강력 추천", "maybe": "혹시나 해서"}
+TIER_LABEL = {"strong": "추천", "maybe": "함께 볼 만한"}
 
 _CSS = """
 body { margin:0; padding:0; background:#f6f7f9;
@@ -69,10 +69,10 @@ def _card(pick: dict, video: dict, to_addr: str) -> str:
         <span>{_minutes(video)}</span>
       </p>
       <p class="summary">{_escape(video.get('summary', ''))}</p>
-      <p class="reason"><b>왜 골랐냐면</b><br>{_escape(pick.get('reason_text', ''))}</p>
+      <p class="reason"><b>추천 이유</b><br>{_escape(pick.get('reason_text', ''))}</p>
       <p class="actions">
-        <a href="{like}">👍 좋았어요</a>
-        <a href="{dislike}">👎 별로였어요</a>
+        <a href="{like}">👍 좋아요</a>
+        <a href="{dislike}">👎 별로예요</a>
       </p>
     </div>"""
 
@@ -89,8 +89,11 @@ def render(picks: list[dict], videos_by_id: dict[str, dict],
     strong = [p for p in picks if p["tier"] == "strong"]
     maybe = [p for p in picks if p["tier"] == "maybe"]
 
+    # 받은편지함에서 제목만 보고 열지 말지 판단할 수 있게, 대표 영상 제목을 앞에 둔다.
     lead = videos_by_id.get(strong[0]["video_id"], {}).get("title", "") if strong else ""
-    subject = f"오늘의 발표 {len(picks)}편 — {lead[:40]}" if lead else f"오늘의 발표 {len(picks)}편"
+    rest = len(picks) - 1
+    subject = (f"{lead} 외 {rest}편" if lead and rest > 0
+               else lead or f"발표 {len(picks)}편")
 
     sections = []
     for tier_picks, label in ((strong, TIER_LABEL["strong"]), (maybe, TIER_LABEL["maybe"])):
@@ -104,11 +107,10 @@ def render(picks: list[dict], videos_by_id: dict[str, dict],
 <html lang="ko"><head><meta charset="utf-8"><style>{_CSS}</style></head>
 <body><div class="wrap">
   <h1>TechLetter</h1>
-  <p class="sub">{today} · 프로필에 맞춰 고른 발표 {len(picks)}편</p>
+  <p class="sub">{today} · {len(picks)}편</p>
   {"".join(sections)}
   <p class="footer">
-    이 메일에 그냥 답장해도 됩니다. 자유롭게 쓰신 내용을 읽고 다음 추천에 반영합니다.<br>
-    예: "1번 좋았어요", "프론트엔드보다 백엔드가 더 궁금해요"
+    답장으로 의견을 남기면 다음 추천에 반영합니다.
   </p>
 </div></body></html>"""
 
@@ -117,7 +119,7 @@ def render(picks: list[dict], videos_by_id: dict[str, dict],
 
 def _text_body(picks: list[dict], videos_by_id: dict[str, dict], today: str) -> str:
     """HTML 을 못 보는 클라이언트를 위한 대체 본문."""
-    lines = [f"TechLetter · {today}", ""]
+    lines = [f"TechLetter · {today} · {len(picks)}편", ""]
     for tier in ("strong", "maybe"):
         tier_picks = [p for p in picks if p["tier"] == tier]
         if not tier_picks:
@@ -129,9 +131,9 @@ def _text_body(picks: list[dict], videos_by_id: dict[str, dict], today: str) -> 
                 f"  {video.get('title', '')}",
                 f"  {video.get('channel', '')} · {video.get('difficulty', '')} · {_minutes(video)}",
                 f"  {video.get('summary', '')}",
-                f"  왜 골랐냐면: {pick.get('reason_text', '')}",
+                f"  추천 이유: {pick.get('reason_text', '')}",
                 f"  {video.get('url', '')}",
                 "",
             ]
-    lines.append("이 메일에 그냥 답장하시면 읽고 다음 추천에 반영합니다.")
+    lines.append("답장으로 의견을 남기면 다음 추천에 반영합니다.")
     return "\n".join(lines)

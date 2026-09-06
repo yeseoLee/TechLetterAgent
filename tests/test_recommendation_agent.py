@@ -67,3 +67,70 @@ def test_handles_garbage_response(monkeypatch):
 def test_empty_candidates_returns_empty(monkeypatch):
     _patch(monkeypatch, {"strong": [], "maybe": []})
     assert ra.recommend({}, [], []) == []
+
+
+# --- 좋아요/싫어요 신호 ----------------------------------------------------
+
+VIDEOS_BY_ID = {
+    "video_001": {"title": "Playwright E2E 테스트 하네스"},
+    "video_002": {"title": "프롬프트 자동화 파이프라인"},
+    "video_003": {"title": "쿠버네티스 네트워킹 심화"},
+}
+RECS = [
+    {"id": "rec_001", "video_id": "video_001"},
+    {"id": "rec_002", "video_id": "video_002"},
+    {"id": "rec_003", "video_id": "video_003"},
+]
+
+
+def test_collect_signals_splits_like_and_dislike():
+    log = [
+        {"recommendation_id": "rec_001", "type": "like"},
+        {"recommendation_id": "rec_003", "type": "dislike"},
+    ]
+    signals = ra.collect_signals(log, RECS, VIDEOS_BY_ID)
+    assert signals["liked"] == ["Playwright E2E 테스트 하네스"]
+    assert signals["disliked"] == ["쿠버네티스 네트워킹 심화"]
+
+
+def test_collect_signals_ignores_free_text_type():
+    log = [{"recommendation_id": "rec_001", "type": "reply_text"}]
+    signals = ra.collect_signals(log, RECS, VIDEOS_BY_ID)
+    assert signals == {"liked": [], "disliked": []}
+
+
+def test_collect_signals_skips_unknown_recommendation():
+    log = [{"recommendation_id": "rec_999", "type": "like"}]
+    assert ra.collect_signals(log, RECS, VIDEOS_BY_ID)["liked"] == []
+
+
+def test_collect_signals_deduplicates_and_caps():
+    log = [{"recommendation_id": "rec_001", "type": "like"} for _ in range(5)]
+    assert ra.collect_signals(log, RECS, VIDEOS_BY_ID, limit=2)["liked"] == [
+        "Playwright E2E 테스트 하네스"]
+
+
+def test_signals_reach_the_prompt(monkeypatch):
+    captured = {}
+
+    def fake(prompt, **kwargs):
+        captured["prompt"] = prompt
+        return {"strong": [], "maybe": []}
+
+    monkeypatch.setattr(ra.llm, "complete_json", fake)
+    ra.recommend({}, [], CANDIDATES,
+                 {"liked": ["좋았던 발표"], "disliked": ["싫었던 발표"]})
+    assert "좋았던 발표" in captured["prompt"]
+    assert "싫었던 발표" in captured["prompt"]
+
+
+def test_no_signal_section_when_empty(monkeypatch):
+    captured = {}
+
+    def fake(prompt, **kwargs):
+        captured["prompt"] = prompt
+        return {"strong": [], "maybe": []}
+
+    monkeypatch.setattr(ra.llm, "complete_json", fake)
+    ra.recommend({}, [], CANDIDATES, {"liked": [], "disliked": []})
+    assert "지난 추천에 대한 반응" not in captured["prompt"]
