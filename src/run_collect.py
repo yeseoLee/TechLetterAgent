@@ -15,6 +15,10 @@ log = logging.getLogger(__name__)
 # 설명이 이보다 짧으면 분석 근거가 부족하다고 보고 건너뛴다.
 MIN_DESCRIPTION_CHARS = 40
 
+# 분석이 연속으로 이만큼 실패하면 개별 영상 문제가 아니라 계정/API 문제로 보고
+# 중단한다. 이게 없으면 크레딧 소진 같은 상황에서 후보 전체를 갈며 돌게 된다.
+MAX_CONSECUTIVE_FAILURES = 3
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -32,6 +36,7 @@ def main(limit: int | None = None, use_llm_filter: bool = True,
 
     stats = {"규칙 제외": 0, "LLM 제외": 0, "설명 부족": 0, "분석 실패": 0, "추가": 0}
     added = 0
+    consecutive_failures = 0
 
     for entry in fresh:
         if added >= limit:
@@ -70,7 +75,14 @@ def main(limit: int | None = None, use_llm_filter: bool = True,
         except Exception as exc:
             log.warning("분석 실패 (%s): %s", entry["title"][:40], exc)
             stats["분석 실패"] += 1
+            consecutive_failures += 1
+            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                log.error("분석이 연속 %d회 실패해 중단합니다. 계정/API 상태를 확인하세요.",
+                          consecutive_failures)
+                break
             continue
+
+        consecutive_failures = 0
 
         entry["id"] = content_store.next_id(videos, "video")
         entry["created_at"] = _now()
