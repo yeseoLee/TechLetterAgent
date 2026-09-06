@@ -1,6 +1,6 @@
 # OpenRouter 가 OpenAI 호환 API 라 이 SDK 로 호출한다. OpenAI 서비스는 쓰지 않는다.
 openai>=1.60.0
 numpy>=2.0.0
-yt-dlp>=2025.1.15
+youtube-transcript-api>=1.0.0
 requests>=2.32.0
 beautifulsoup4>=4.12.3

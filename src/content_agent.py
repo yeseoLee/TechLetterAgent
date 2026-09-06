@@ -1,11 +1,8 @@
 """Content Agent — YouTube Data API 로 화이트리스트 채널·재생목록의 신규 영상을 수집한다.
 
-자막은 쓰지 않는다. GitHub Actions 의 데이터센터 IP 에서 yt-dlp 가 전면 봇 차단되어
-자막도 오디오도 받을 수 없기 때문이다(진단 결과는 scripts/diagnose_youtube_access.py).
-대신 발표자가 직접 쓴 영상 설명을 분석 입력으로 쓴다. 컨퍼런스 채널은 설명에
-세션 초록·발표 대상·목차를 구조화해 넣는 경우가 많아 자동 자막보다 정확하다.
-
-로컬(주거용 IP)에서는 yt-dlp 가 동작하므로 자막 보강 경로를 opt-in 으로 남겨둔다.
+분석 입력은 발표자가 직접 쓴 영상 설명이고, 자막을 받을 수 있으면 앞부분을 함께 쓴다.
+GitHub Actions 의 데이터센터 IP 에서는 자막이 RequestBlocked 로 막히므로(실측)
+그 경우 설명만으로 진행한다. 로컬(주거용 IP)에서는 자막이 정상적으로 붙는다.
 """
 import logging
 
@@ -13,7 +10,10 @@ from . import config, content_store, youtube_api
 
 log = logging.getLogger(__name__)
 
-SUBTITLE_LANGS = ["ko", "ko-KR", "en", "en-US"]
+SUBTITLE_LANGS = ("ko", "en")
+
+# 자막이 IP 차단된 실행에서 영상마다 재시도하지 않도록 하는 플래그.
+_transcripts_blocked = False
 
 
 def collect_new_videos(per_source: int = 20) -> list[dict]:
@@ -79,73 +79,83 @@ def collect_new_videos(per_source: int = 20) -> list[dict]:
     return enriched
 
 
-def fetch_transcript(video_url: str) -> tuple[str, str] | None:
-    """yt-dlp 로 자동 자막을 받아 평문으로 만든다. 반환: (transcript, language).
+def fetch_transcript(youtube_id: str, max_seconds: int = config.TRANSCRIPT_SECONDS
+                     ) -> tuple[str, str] | None:
+    """자막 앞부분을 받아 평문으로 만든다. 반환: (transcript, language_code).
 
-    GitHub Actions 에서는 봇 차단으로 항상 실패한다. 로컬 실행에서 분석 품질을
-    높이고 싶을 때만 `run_collect --with-transcript` 로 켠다.
+    발표는 도입부에 주제·대상·목차가 몰려 있어서 앞 몇 분이면 무엇을 다루는지
+    판단하기에 충분하다. 전체를 넣으면 프롬프트만 커지고 요약 품질은 흔들린다.
+
+    GitHub Actions 의 데이터센터 IP 에서는 RequestBlocked 로 막힌다(실측).
+    막히면 None 을 돌려주고 호출부가 설명만으로 진행한다. config 에 프록시가
+    설정돼 있으면 그쪽으로 우회한다.
     """
-    import requests
-    import yt_dlp
+    global _transcripts_blocked
+    if _transcripts_blocked:
+        return None
 
     try:
-        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True}) as ydl:
-            info = ydl.extract_info(video_url, download=False)
+        from youtube_transcript_api import YouTubeTranscriptApi
+        from youtube_transcript_api._errors import (
+            CouldNotRetrieveTranscript, RequestBlocked,
+        )
+    except ImportError:
+        log.warning("youtube-transcript-api 가 설치돼 있지 않습니다")
+        _transcripts_blocked = True
+        return None
+
+    try:
+        fetched = _api().fetch(youtube_id, languages=SUBTITLE_LANGS)
+    except RequestBlocked:
+        # 한 번 막히면 남은 영상도 전부 막힌다. 매번 재시도하지 않는다.
+        _transcripts_blocked = True
+        log.info("자막 접근이 차단되어(IP 제한) 이번 실행에서는 설명만 사용합니다")
+        return None
+    except CouldNotRetrieveTranscript as exc:
+        log.info("자막 없음 (%s): %s", youtube_id, type(exc).__name__)
+        return None
     except Exception as exc:
-        log.info("자막 조회 실패 (%s): %s", video_url, str(exc)[:100])
+        log.warning("자막 조회 실패 (%s): %s", youtube_id, str(exc)[:120])
         return None
 
-    picked = _pick_subtitle_url(info.get("subtitles") or {}, info.get("automatic_captions") or {})
-    if not picked:
-        return None
-    url, language = picked
-
-    try:
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        log.info("자막 다운로드 실패: %s", exc)
+    head_text = " ".join(
+        snippet.text.strip()
+        for snippet in fetched.snippets
+        if snippet.start < max_seconds and snippet.text.strip()
+    )
+    text = " ".join(head_text.split())
+    if not text:
         return None
 
-    text = _parse_json3(response.text) if "json3" in url else _parse_vtt(response.text)
-    return (text, language) if text else None
+    log.info("자막 %s %d자 (앞 %d초)", fetched.language_code, len(text), max_seconds)
+    return text, fetched.language_code
 
 
-def _pick_subtitle_url(manual: dict, auto: dict) -> tuple[str, str] | None:
-    """수동 자막을 자동 자막보다, 한국어를 영어보다 우선한다."""
-    for tracks in (manual, auto):
-        for lang in SUBTITLE_LANGS:
-            for key in (lang, f"{lang}-orig"):
-                for track in tracks.get(key) or []:
-                    if track.get("ext") in ("json3", "vtt"):
-                        return track["url"], lang.split("-")[0]
-    return None
+def reset_transcript_state() -> None:
+    """차단 플래그를 되돌린다. 테스트에서 쓴다."""
+    global _transcripts_blocked
+    _transcripts_blocked = False
 
 
-def _parse_json3(raw: str) -> str:
-    """유튜브 json3 자막을 평문으로 편다."""
-    import json
+def _api():
+    """프록시가 설정돼 있으면 그쪽으로 우회하는 클라이언트를 만든다.
 
-    try:
-        events = json.loads(raw).get("events") or []
-    except json.JSONDecodeError:
-        return ""
-    parts = [seg.get("utf8", "") for e in events for seg in (e.get("segs") or [])]
-    return " ".join("".join(parts).split())
+    Actions 에서 자막을 쓰려면 주거용 프록시가 필요하다. 설정하지 않으면
+    프록시 없이 동작하고, 차단되면 설명만으로 진행한다.
+    """
+    from youtube_transcript_api import YouTubeTranscriptApi
 
+    if config.PROXY_URL:
+        from youtube_transcript_api.proxies import GenericProxyConfig
 
-def _parse_vtt(raw: str) -> str:
-    """WebVTT 에서 타임코드와 태그를 걷어내고 평문만 남긴다."""
-    import re
+        return YouTubeTranscriptApi(proxy_config=GenericProxyConfig(
+            http_url=config.PROXY_URL, https_url=config.PROXY_URL))
 
-    lines: list[str] = []
-    for line in raw.splitlines():
-        line = line.strip()
-        if not line or "-->" in line or line.isdigit():
-            continue
-        if line.startswith(("WEBVTT", "Kind:", "Language:", "NOTE")):
-            continue
-        line = re.sub(r"<[^>]+>", "", line)
-        if line and (not lines or lines[-1] != line):  # 자동 자막의 중복 행 제거
-            lines.append(line)
-    return " ".join(" ".join(lines).split())
+    if config.WEBSHARE_PROXY_USERNAME and config.WEBSHARE_PROXY_PASSWORD:
+        from youtube_transcript_api.proxies import WebshareProxyConfig
+
+        return YouTubeTranscriptApi(proxy_config=WebshareProxyConfig(
+            proxy_username=config.WEBSHARE_PROXY_USERNAME,
+            proxy_password=config.WEBSHARE_PROXY_PASSWORD))
+
+    return YouTubeTranscriptApi()

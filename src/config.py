@@ -61,6 +61,16 @@ PER_SOURCE_LIMIT = 150
 # 주간 신규 채널/재생목록 탐색에서 검색할 키워드 후보 수.
 DISCOVERY_SEARCH_RESULTS = 25
 
+# 분석에 넣을 자막 구간(초). 발표는 도입부에 주제·대상·목차가 몰려 있어
+# 앞 몇 분이면 무엇을 다루는지 판단하기에 충분하다.
+TRANSCRIPT_SECONDS = 180
+
+# 자막은 데이터센터 IP 에서 차단된다. Actions 에서도 쓰려면 주거용 프록시가 필요하다.
+# 설정하지 않으면 자막 없이 설명만으로 동작한다.
+PROXY_URL = os.environ.get("PROXY_URL")
+WEBSHARE_PROXY_USERNAME = os.environ.get("WEBSHARE_PROXY_USERNAME")
+WEBSHARE_PROXY_PASSWORD = os.environ.get("WEBSHARE_PROXY_PASSWORD")
+
 # 추천 구성: 매주 3편.
 #   near — 임베딩 유사도 상위 2편. 확실히 취향에 맞는 것.
 #   far  — 유사도는 낮지만 볼 가치가 있다고 LLM 이 판단한 1편. 취향이 굳는 것을 막는다.
