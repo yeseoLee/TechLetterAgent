@@ -30,6 +30,10 @@ MODEL_SMART = "deepseek/deepseek-v4-flash-0731"
 LLM_MAX_RETRIES = 4
 LLM_RETRY_BASE_SECONDS = 1.5
 
+# SDK 기본 타임아웃은 10분이라 응답 없는 요청 하나가 워크플로우 전체를 잡아먹는다.
+# 이 용도는 짧은 JSON 응답이라 넉넉히 잡아도 이 정도면 충분하다.
+LLM_TIMEOUT_SECONDS = 90
+
 # collect 1회당 분석할 영상 수 상한. 한 번에 과하게 도는 것을 막는 안전장치.
 MAX_ANALYSIS_PER_RUN = 50
 

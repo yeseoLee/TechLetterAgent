@@ -6,6 +6,7 @@
 (article_analyzer.embed 참고).
 """
 import json
+import logging
 import random
 import re
 import time
@@ -14,6 +15,8 @@ from functools import lru_cache
 from openai import OpenAI, RateLimitError, APIError
 
 from . import config
+
+log = logging.getLogger(__name__)
 
 _JSON_BLOCK = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 
@@ -26,6 +29,8 @@ def client() -> OpenAI:
     return OpenAI(
         base_url=config.OPENROUTER_BASE_URL,
         api_key=config.OPENROUTER_API_KEY,
+        timeout=config.LLM_TIMEOUT_SECONDS,
+        max_retries=0,  # 재시도는 complete() 가 직접 관리한다.
         default_headers={
             "HTTP-Referer": config.OPENROUTER_REFERER,
             "X-Title": config.OPENROUTER_TITLE,
@@ -43,6 +48,7 @@ def complete(prompt: str, *, model: str, system: str | None = None,
 
     last_error: Exception | None = None
     for attempt in range(config.LLM_MAX_RETRIES):
+        started = time.monotonic()
         try:
             response = client().chat.completions.create(
                 model=model,
@@ -52,10 +58,14 @@ def complete(prompt: str, *, model: str, system: str | None = None,
             )
             text = (response.choices[0].message.content or "").strip()
             if text:
+                log.info("LLM %s %.1fs %d자", model, time.monotonic() - started, len(text))
                 return text
             last_error = ValueError("빈 응답")
         except (RateLimitError, APIError) as exc:
             last_error = exc
+        log.warning("LLM 시도 %d/%d 실패 (%.1fs): %s",
+                    attempt + 1, config.LLM_MAX_RETRIES, time.monotonic() - started,
+                    str(last_error)[:150])
 
         if attempt < config.LLM_MAX_RETRIES - 1:
             time.sleep(config.LLM_RETRY_BASE_SECONDS * (2 ** attempt) + random.uniform(0, 1))
