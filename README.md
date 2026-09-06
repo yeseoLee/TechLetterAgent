@@ -1,239 +1,286 @@
 # TechLetterAgent
 
-넘쳐나는 개발자 컨퍼런스·발표 영상 중에서 **내 포지션 / 기술스택 / 관심주제 / 난이도 / 언어**에 맞는 것만 골라서 메일로 보내주는 개인용 뉴스레터 봇.
+A personal newsletter bot that watches Korean and English developer conference
+channels and sends me the three talks worth my time each week.
 
-- 사용자: 1인 (개인용)
-- 실행: GitHub Actions cron — 상시 서버 없음
-- 상태 저장: 레포 안 `data/*.json` (외부 DB 없음)
-- 이메일: 본인 Gmail 계정에 앱 비밀번호로 SMTP/IMAP 접속
+**한국어 문서: [README.ko.md](README.ko.md)**
 
-## 동작 방식
+Runs entirely on GitHub Actions. No server, no database, no email service.
+
+---
+
+## The idea: a feedback loop built out of email replies
+
+Recommenders need feedback, and feedback usually means infrastructure — a web app
+with thumbs-up buttons, click-tracking redirects, an always-on endpoint to receive
+them, and a database to store the results. That is a lot of machinery for one user.
+
+This project replaces all of it with **replying to an email**.
 
 ```
-collect.yml (매주 월요일 KST 05:00)
-  YouTube Data API 로 소스별 목록을 깊게 훑음 (신규 업로드 + 예전 발표)
-  → 이미 저장한 영상 제외 → 사전 필터(비발표 콘텐츠 제거)
-  → 요약/난이도/타겟대상 생성 → 임베딩 → data/videos.json 커밋
-  목표: 주당 새 영상 10편
-
-send.yml (매주 월요일 KST 07:00)
-  1. IMAP 답장 조회 → 프로필/메모 갱신, 채널 예/아니오 반영
-  2. 프로필 임베딩 vs 영상 임베딩 코사인 유사도 → 후보 Top-30 (기추천 제외)
-  3. 추천 3편 확정
-       near 2편 — 유사도 상위. 코드가 고르고 LLM 은 이유만 쓴다
-       far  1편 — 유사도는 낮지만 볼 가치가 있다고 LLM 이 판단한 것
-  4. 새 채널 후보 1개 탐색 (YouTube search.list + LLM 판정)
-  5. 이메일 포맷팅 → SMTP 발송 → data/*.json 커밋
+newsletter  ──▶  you reply  ──▶  IMAP reads it  ──▶  profile updates
+   ▲                                                        │
+   └────────────────────────────────────────────────────────┘
 ```
 
-피드백 루프는 **답장 기반**입니다. 오픈/클릭 트래킹은 상시 응답 서버가 필요해 1차 범위에서 제외했습니다.
+Two kinds of replies, both landing in the same inbox:
 
-## 모델
-
-LLM 호출과 임베딩을 전부 **OpenRouter** 하나로 처리합니다. 외부 API 키는 OpenRouter 와
-YouTube 두 개뿐입니다.
-
-임베딩 모델 목록은 chat 모델과 분리되어 있습니다 — `/api/v1/models` 가 아니라
-`/api/v1/embeddings/models` 를 봐야 합니다. 슬러그는 `src/config.py` 상수라 언제든 교체 가능합니다.
-
-| 용도 | 모델 | 비고 |
+| Reply | How it is produced | How it is read |
 | --- | --- | --- |
-| 요약 · 난이도 · 답장 파싱 | `deepseek/deepseek-v4-flash-0731` | 1.31M ctx. $0.05/M in, $0.10/M out |
-| Top-30 추천 재검토 | `deepseek/deepseek-v4-flash-0731` | 같은 모델. 추천 품질이 아쉬우면 이쪽만 더 센 모델로 올립니다 |
-| 임베딩 | `qwen/qwen3-embedding-8b` | 멀티링구얼, 32K ctx. $0.01/M 토큰 |
+| Rating a talk | A `👍` link in the email is a `mailto:` that opens a pre-filled message titled `[TLA] like rec_004` | Parsed from the subject line. No LLM call |
+| Anything else | You just type — *"I'd rather see backend than frontend"* | An LLM turns it into a profile diff and a note |
 
-### 비용
+Why this works without a server:
 
-유료 슬러그라 **OpenRouter 계정에 크레딧이 있어야** 동작합니다. 무료 티어의 분당/일일
-요청 수 제한은 없습니다.
+- **A click becomes an email.** Click-tracking normally needs a live endpoint to
+  redirect through. A `mailto:` link needs nothing — the mail client does the work,
+  and the click arrives as a message the next scheduled run picks up.
+- **The inbox is the database.** Replies wait there until the workflow runs. No
+  webhook to receive them, nothing to keep online between runs.
+- **Structured and unstructured feedback share one channel.** A tagged subject line
+  is cheap to parse; free text goes to the LLM. Both arrive the same way.
+- **Plus-addressing keeps it out of the way.** The `Reply-To` header is
+  `you+techletter@gmail.com`, so IMAP filters on exactly that address and never
+  touches everyday mail.
 
-영상 1건 분석에 입력 1~2K 토큰, 출력 300 토큰, 임베딩 1K 토큰 수준이라 100건을 돌려도 몇 센트입니다.
-`MAX_ANALYSIS_PER_RUN`(기본 50)은 비용 제한이 아니라 한 번에 과하게 도는 것을 막는
-안전장치입니다.
+The cost of the whole loop is one IMAP search per week.
 
-## 초기 설정
+---
 
-### 1. 프로필 채우기
+## What it does
 
-`config/seed_profile.json` 의 플레이스홀더를 본인 값으로 수정합니다. `data/user_profile.json` 이
-없을 때 최초 1회만 이 파일로 초기화되고, 이후에는 답장 피드백으로 갱신됩니다.
+```
+collect.yml — Mondays 05:00 KST
+  YouTube Data API walks each source deep (new uploads and older talks alike)
+  → skip anything already stored → drop non-talks
+  → generate summary / difficulty / audience → embed → commit data/videos.json
+  Target: 10 new talks per week
 
-`few_shot_videos` 에는 "내가 좋아했던 발표 영상" URL 3~5개를 넣습니다. 초기 취향 추론에 쓰입니다.
+send.yml — Mondays 07:00 KST
+  1. Read replies over IMAP → update profile, notes, channel approvals
+  2. Cosine similarity against the profile embedding → top 30 candidates
+     (already-recommended talks excluded, by id and by normalized title)
+  3. Pick 3
+       2 × near — highest similarity. Code picks them; the LLM only writes the reason
+       1 × far  — low similarity, but the LLM judged it worth watching anyway
+  4. Search for one new channel to propose
+  5. Render → send over SMTP → commit data/*.json
+```
 
-### 2. 수집 소스
+### Why one "far" pick
 
-`config/channels.json` 에 채널과 재생목록을 등록합니다. 채널 ID 는 다음으로 확인합니다.
+Ranking by similarity alone makes recommendations converge: you get more of what
+you already liked, and the profile never grows. The third slot is reserved for a
+talk from the middle of the ranking that the model can argue is worth your time
+anyway. The top of the list overlaps with the near picks and the bottom is simply
+unrelated, so the pool is drawn from the middle — where "unfamiliar but connected"
+lives.
+
+---
+
+## Design decisions worth knowing
+
+**State lives in the repo.** Every run reads `data/*.json`, updates it, and commits.
+No Postgres, no Supabase. For one user and a few hundred talks this is enough, and
+the git history doubles as an audit log of how the profile evolved.
+
+**Embeddings are stored separately, base64-encoded.** Inline in `videos.json` they
+were 90 KB per talk against 1.2 KB of everything else — 99% of the file, rewritten
+and committed on every run. Splitting them out and packing float32 as base64 cut the
+total to 20%, and `videos.json` stayed small enough to read in a diff.
+
+**No transcripts.** On GitHub Actions' datacenter IPs, yt-dlp is blocked outright
+(`Sign in to confirm you're not a bot`, every player client) and the RSS feeds return
+404s. So the analysis input is the video description instead. That turned out to be
+an upgrade, not a compromise: conference channels put a structured abstract there —
+NAVER D2 literally includes a `[발표 대상]` (target audience) line — while
+auto-generated captions are full of transcription errors.
+Reproduce the finding with `scripts/diagnose_youtube_access.py`.
+
+**Everything goes through OpenRouter.** One key covers both chat and embeddings.
+The embedding models are listed at `/api/v1/embeddings/models`, not the usual
+`/api/v1/models`.
+
+**App passwords instead of Gmail OAuth.** For a single user, an OAuth consent screen,
+Google verification, and 7-day refresh-token expiry buy nothing. SMTP and IMAP with an
+app password need two secrets, never expire, and use only the standard library.
+
+---
+
+## Models
+
+Swap any of these by editing the constants in `src/config.py`.
+
+| Job | Model | Notes |
+| --- | --- | --- |
+| Summary, difficulty, reply parsing | `deepseek/deepseek-v4-flash-0731` | $0.05/M in, $0.10/M out |
+| Recommendation review, channel judging | `deepseek/deepseek-v4-flash-0731` | Raise this one alone if the picks disappoint |
+| Embeddings | `qwen/qwen3-embedding-8b` | Multilingual, 32K context, $0.01/M |
+
+DeepSeek v4 flash is a **reasoning model**, so `max_tokens` covers reasoning tokens
+too. Budget it generously — a stingy limit means the model spends the whole budget
+thinking and returns empty content with `finish_reason=length`. The per-call budgets
+live in `config.TOKENS_*`.
+
+Cost is a few cents per week at this volume.
+
+---
+
+## Setup
+
+### 1. Fill in the profile
+
+Edit `config/seed_profile.json` — position, stack, interests, level, and 3–5
+`few_shot_videos` you actually enjoyed. It seeds `data/user_profile.json` on the
+first run; after that, replies drive it.
+
+### 2. Add sources
+
+`config/channels.json` holds channels and playlists. Resolve a channel id with:
 
 ```bash
 python scripts/resolve_channel_id.py https://www.youtube.com/@naver_d2
 ```
 
-재생목록 ID 는 URL 의 `list=` 뒤 문자열을 그대로 씁니다.
+Playlist ids are the `list=` value from the URL.
 
-**사전 필터** — 화이트리스트 채널에도 발표가 아닌 영상이 섞입니다(BGM 플레이리스트,
-채용 웨비나, 행사 스케치 등). `src/prefilter.py` 가 2단계로 걸러냅니다.
+**Pre-filtering.** Whitelisted channels still carry non-talks — BGM playlists,
+recruiting webinars, event sketches. `src/prefilter.py` removes them in two stages:
+title keywords and duration (free), then an LLM call for whatever survives. The
+order matters: the cheap check runs first so the expensive one sees less.
+`TITLE_ALLOW` wins over `TITLE_DENY`, so a keynote whose title mentions an interview
+still gets through.
 
-1. 규칙 판정 — 무료. 제목 키워드 + 영상 길이(8분~3시간)로 명백한 것만 제거
-2. LLM 판정 — 1단계 통과분만. 무료 모델 요청 한도를 아끼기 위한 순서
+### 3. YouTube Data API key
 
-잘못 걸러지는 영상이 보이면 `prefilter.py` 의 `TITLE_DENY` / `TITLE_ALLOW` 를 조정하세요.
-`TITLE_ALLOW` 가 `TITLE_DENY` 보다 우선합니다.
+Enable *YouTube Data API v3* in [Google Cloud Console](https://console.cloud.google.com/),
+create an API key, and store it as `YOUTUBE_API_KEY`.
 
-### 3. YouTube Data API 키
+The free quota is 10,000 units/day. Listing and detail calls cost 1 unit per 50 items;
+the weekly channel search costs 100. A full week runs well under 200.
 
-1. [Google Cloud Console](https://console.cloud.google.com/) 에서 프로젝트 생성 (Gmail 과 같은 프로젝트를 써도 됩니다)
-2. **API 및 서비스 → 라이브러리** 에서 *YouTube Data API v3* 사용 설정
-3. **사용자 인증 정보 → API 키** 생성 후 `YOUTUBE_API_KEY` secret 에 등록
+### 4. Gmail app password
 
-무료 quota 는 하루 10,000 units 입니다. 이 프로젝트는 소스 8개 기준 하루 20 units
-내외를 쓰므로 여유가 큽니다.
+Requires 2-Step Verification. Generate one at
+[myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) and
+store `GMAIL_ADDRESS` and `GMAIL_APP_PASSWORD`.
 
-### 4. Gmail 앱 비밀번호
+**Use a plus address for `FEEDBACK_ADDRESS`** — e.g. `you+techletter@gmail.com`. It
+goes into the `Reply-To` header and the feedback links, so replies come back tagged
+and IMAP can search `TO "…+techletter@gmail.com"` without ever touching your other
+mail.
 
-Gmail API(OAuth) 대신 앱 비밀번호로 SMTP/IMAP 에 접속합니다. 사용자가 한 명이라
-OAuth 동의 화면, 심사, refresh token 7일 만료를 감수할 이유가 없습니다.
+Putting the tag only in `To` does not work: replying rewrites `To` to the sender
+address and the tag disappears. `Reply-To` is what survives.
 
-1. 계정에 **2단계 인증**이 켜져 있어야 합니다
-2. [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) 에서
-   앱 이름을 적고 생성 → 16자리 비밀번호 복사
-3. `GMAIL_ADDRESS`(발송 계정 주소)와 `GMAIL_APP_PASSWORD` 를 secret 에 등록
+To also separate it in the UI, add a Gmail filter on that recipient — but leave
+"Skip the Inbox" off, since IMAP searches `INBOX`.
 
-앱 비밀번호는 만료되지 않습니다. 폐기하려면 같은 페이지에서 삭제하면 됩니다.
+### 5. Secrets
 
-**플러스 주소로 답장 구분하기 (권장)**
-
-일상적으로 쓰는 Gmail 계정이라면 `FEEDBACK_ADDRESS` 에 플러스 주소를 넣으세요.
-
-```
-FEEDBACK_ADDRESS=yscoder3893+techletter@gmail.com
-```
-
-이 주소가 메일의 `Reply-To` 헤더와 👍/👎 mailto 링크에 들어가서, 답장이 태그를 달고
-돌아옵니다. IMAP 은 `TO "…+techletter@gmail.com"` 으로 검색하므로 일상 메일과 절대
-섞이지 않습니다. 별도 계정을 만들 필요가 없습니다.
-
-`To` 에만 태그를 넣으면 안 됩니다 — 답장할 때 `To` 가 발신 주소로 바뀌면서 태그가
-사라집니다. 그래서 `Reply-To` 를 씁니다.
-
-받은편지함에서도 분리하고 싶으면 Gmail 필터를 추가하세요.
-설정 → 필터 및 차단된 주소 → 새 필터 만들기 → `받는사람: yscoder3893+techletter@gmail.com`
-→ 라벨 적용. IMAP 검색은 `INBOX` 를 보므로 "받은편지함 건너뛰기" 는 켜지 마세요.
-
-### 5. GitHub Secrets
-
-| Secret | 용도 |
+| Secret | Purpose |
 | --- | --- |
-| `OPENROUTER_API_KEY` | LLM 호출과 임베딩 전부. [openrouter.ai/keys](https://openrouter.ai/keys) 에서 발급 |
-| `YOUTUBE_API_KEY` | YouTube Data API v3. 영상 발견 + 길이 + 설명 |
-| `GMAIL_ADDRESS` | 발송에 쓸 Gmail 주소 |
-| `GMAIL_APP_PASSWORD` | 앱 비밀번호 16자리 |
-| `RECIPIENT_EMAIL` | 뉴스레터 수신 주소. 생략하면 `GMAIL_ADDRESS` 로 보냅니다 |
-| `FEEDBACK_ADDRESS` | 피드백을 받을 주소. 플러스 주소 권장 (아래 참고) |
+| `OPENROUTER_API_KEY` | All LLM calls and embeddings |
+| `YOUTUBE_API_KEY` | Video discovery, metadata, channel search |
+| `GMAIL_ADDRESS` | Sending account |
+| `GMAIL_APP_PASSWORD` | 16-character app password |
+| `FEEDBACK_ADDRESS` | Plus address for replies (optional but recommended) |
 
-레포 Settings → Secrets and variables → Actions 에서 등록합니다.
+### 6. Workflow write permission
 
-### 6. Actions 쓰기 권한
+Settings → Actions → General → Workflow permissions → **Read and write**. Without it
+the runs cannot commit `data/`.
 
-Settings → Actions → General → Workflow permissions 를 **Read and write permissions** 로 설정해야
-워크플로우가 `data/` 변경을 커밋할 수 있습니다.
+---
 
-## 로컬 테스트
+## Running it
+
+Both workflows expose `workflow_dispatch`:
+
+```bash
+gh workflow run collect.yml -f limit=10
+gh workflow run send.yml -f dry_run=true       # recommend, print, send nothing
+gh workflow run send.yml -f feedback_only=true # read replies only, no send
+```
+
+`--dry-run` needs no Gmail configuration at all, which makes it the fastest way to
+check recommendation quality.
+
+Locally:
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # 키 채우기
+cp .env.example .env    # fill in
 set -a && source .env && set +a
-python -m src.run_collect
-python -m src.run_send
+python -m src.run_send --dry-run
 ```
 
-`workflow_dispatch` 가 열려 있어 GitHub UI 에서 수동 실행도 가능합니다.
-
-테스트는 API 키 없이 돌아갑니다.
+Tests need no API keys:
 
 ```bash
 pip install -r requirements-dev.txt
 python -m pytest tests/ -q
 ```
 
-## 레포 구조
+---
 
-| 경로 | 역할 |
+## Discovering new channels
+
+A hand-maintained whitelist only ever surfaces what you already know about. Each
+newsletter ends with one new channel proposal and **yes / no** links.
+
+Search runs through YouTube's `search.list` — more precise than general web search
+when the target is a channel, and it reuses the key you already have. Candidates are
+filtered by activity (≥15 videos, ≥1,000 subscribers), then an LLM picks one, with
+instructions to skip vlogs, course-selling channels, and news roundups.
+
+Yes appends to `config/channels.json`. No is recorded in `discoveries.json` so the
+same channel is never proposed twice.
+
+---
+
+## Layout
+
+| Path | Role |
 | --- | --- |
-| `src/content_agent.py` | 채널·재생목록 RSS 수집 + yt-dlp 자막 추출 |
-| `src/prefilter.py` | 비발표 콘텐츠 제거 (규칙 → LLM 2단계) |
-| `src/llm.py` | OpenRouter 호출 래퍼 (스로틀·재시도·JSON 파싱) |
-| `src/article_analyzer.py` | LLM 요약/난이도/타겟 생성, Whisper 폴백, 임베딩 |
-| `src/content_store.py` | `data/*.json` 읽기/쓰기 |
-| `src/embedding_store.py` | 임베딩 저장 (float32 base64, 별도 파일) |
-| `src/cluster_agent.py` | 코사인 유사도 Top-30 후보 추출 |
-| `src/recommendation_agent.py` | Sonnet 5 재검토 → 강추 3 / 혹시나 2 |
-| `src/newsletter_agent.py` | 이메일 본문 포맷팅 (mailto 피드백 버튼 포함) |
-| `src/email_client.py` | SMTP 발송 / IMAP 답장 조회 |
-| `src/feedback_agent.py` | 답장 파싱 → 프로필 diff 제안 |
-| `src/memory_agent.py` | 프로필/메모 갱신 |
+| `src/youtube_api.py` | Data API client — playlists, video details, channel search |
+| `src/content_agent.py` | Collects new videos from every source |
+| `src/prefilter.py` | Drops non-talks (rules, then LLM) |
+| `src/article_analyzer.py` | Summary / difficulty / audience / topics, plus embeddings |
+| `src/cluster_agent.py` | Cosine similarity, top-K, duplicate removal |
+| `src/recommendation_agent.py` | Near/far selection and reasons |
+| `src/discovery_agent.py` | Weekly channel proposal |
+| `src/newsletter_agent.py` | HTML and plain-text rendering, feedback links |
+| `src/email_client.py` | SMTP send, IMAP reply fetch |
+| `src/feedback_agent.py` | Reply → profile diff + note |
+| `src/memory_agent.py` | Applies diffs, notes, channel approvals |
+| `src/llm.py` | OpenRouter wrapper — retries, JSON parsing |
+| `src/content_store.py` · `embedding_store.py` | `data/*.json` persistence |
 
-## 데이터 저장
+### Data files
 
-상태는 전부 레포 안 `data/*.json` 에 있고, 워크플로우가 실행될 때마다 커밋됩니다.
-
-| 파일 | 내용 |
+| File | Contents |
 | --- | --- |
-| `videos.json` | 영상 메타데이터 + 요약/난이도/대상/주제 |
-| `embeddings.json` | `video_id` → float32 base64 임베딩 |
-| `user_profile.json` | 구조화 프로필 |
-| `user_notes.json` | 답장에서 뽑은 자유 텍스트 메모 |
-| `recommendations.json` | 추천 이력 (중복 추천 방지) |
-| `discoveries.json` | 주간 채널 제안과 예/아니오 응답 |
-| `feedback_log.json` | 피드백 로그 |
+| `videos.json` | Metadata plus generated summary, difficulty, audience, topics |
+| `embeddings.json` | `video_id` → float32 base64 |
+| `user_profile.json` | Structured profile |
+| `user_notes.json` | Free-text notes extracted from replies |
+| `recommendations.json` | History, which is also the duplicate guard |
+| `feedback_log.json` | Every reply, with the diff it produced |
+| `discoveries.json` | Channel proposals and answers |
 
-**이미 추천한 영상은 다시 추천하지 않습니다.** `recommendations.json` 의 `video_id`
-집합을 후보 추출 단계에서 제외합니다.
+---
 
-**임베딩을 왜 분리했나** — 인라인으로 넣으면 영상 1건당 임베딩 90KB, 나머지 1.2KB 로
-파일의 99%가 임베딩입니다. 매 실행마다 파일 전체를 다시 커밋하는 구조라 git 히스토리가
-실행 횟수만큼 누적됩니다. 별도 파일 + float32 base64 로 바꿔서 전체 크기를 20%로 줄이고,
-`videos.json` 은 git diff 로 실제 내용 변화를 읽을 수 있게 유지했습니다.
+## Known limits
 
-## 추천 구성
+- **Talks without a usable description are skipped.** Under 40 characters, there is
+  nothing to analyze. Running locally, `--with-transcript` adds captions to the
+  analysis, since yt-dlp works fine from a residential IP.
+- **The repo is public**, so `data/` — profile, interests, reply text — is public
+  too. `gh repo edit --visibility private --accept-visibility-change-consequences`
+  changes that.
 
-매주 3편을 보냅니다.
-
-| 구분 | 개수 | 선정 방식 |
-| --- | --- | --- |
-| 추천 | 2 | 프로필 임베딩과 코사인 유사도가 가장 높은 2편. 코드가 고르고 LLM 은 이유만 씁니다 |
-| 넓혀보기 | 1 | 유사도 중하위 구간에서 LLM 이 "지금 취향은 아니지만 볼 가치가 있다"고 판단한 1편 |
-
-유사도만 따르면 추천이 한 방향으로 굳습니다. `넓혀보기` 는 그걸 막기 위한 자리라,
-LLM 에게 "이 사람의 현재 관심사와 어떻게 연결되는지 설명할 수 있는 것"을 고르게 합니다.
-
-## 새 채널 탐색
-
-화이트리스트를 손으로만 늘리면 아는 채널 안에서만 돌게 됩니다. 매주 뉴스레터 하단에
-새 채널 후보 하나를 제안하고, **예 / 아니오** 링크로 답하면 반영됩니다.
-
-- 검색: YouTube Data API `search.list` 로 프로필 기반 키워드를 한국어·영어 각각 검색
-- 필터: 영상 15편 미만 또는 구독자 1,000명 미만 제외
-- 판정: LLM 이 후보 중 1개 선택 (개인 브이로그·강의 판매·뉴스 요약 채널은 제외하도록 지시)
-- 예 → `config/channels.json` 에 추가 / 아니오 → `discoveries.json` 에 기록해 재제안 방지
-
-`search.list` 는 100 quota units 로 다른 호출(1 unit)보다 비싸지만, 주 1회라
-하루 한도 10,000 에는 여유가 큽니다.
-
-## 알려진 제약
-
-- **자막을 쓰지 않습니다.** GitHub Actions 의 데이터센터 IP 에서 yt-dlp 는 전면 봇 차단되고
-  (`Sign in to confirm you're not a bot`, player_client 4종 모두 실패), RSS 도 404 로
-  스로틀링됩니다. 진단 결과는 `scripts/diagnose_youtube_access.py` 로 재현할 수 있습니다.
-  그래서 발견·길이·설명을 YouTube Data API 로 받고, **발표자가 직접 쓴 영상 설명**을
-  분석 입력으로 씁니다. 컨퍼런스 채널은 설명에 세션 초록·발표 대상·목차를 구조화해 넣는
-  경우가 많고, 자동 자막보다 오히려 정확합니다.
-  로컬(주거용 IP)에서는 yt-dlp 가 동작하므로 `--with-transcript` 로 자막을 함께 넣을 수 있습니다.
-- **설명이 부실한 영상은 건너뜁니다.** 설명 40자 미만이면 분석 근거가 없다고 보고 제외합니다.
-- **공개 레포**: `data/` 에 프로필·관심사·피드백 답장 원문이 커밋되어 공개됩니다.
-  비공개로 바꾸려면 `gh repo edit --visibility private --accept-visibility-change-consequences`.
-
-## 라이선스
+## License
 
 MIT
