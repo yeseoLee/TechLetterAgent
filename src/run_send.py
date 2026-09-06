@@ -25,12 +25,22 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def main(dry_run: bool = False) -> None:
+def main(dry_run: bool = False, feedback_only: bool = False) -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
     profile = memory_agent.bootstrap_profile()
     notes = content_store.load(config.USER_NOTES, []) or []
     videos = content_store.load(config.VIDEOS, []) or []
+
+    # 답장만 읽어 프로필에 반영하고 끝낸다. 발송 없이 피드백 루프만 확인할 때 쓴다.
+    if feedback_only:
+        before = dict(profile)
+        profile, notes = _apply_feedback(profile, notes)
+        if profile != before:
+            log.info("프로필 변경: %s", _diff_summary(before, profile))
+        else:
+            log.info("프로필 변경 없음")
+        return
 
     if not videos:
         log.error("분석된 영상이 없습니다. 먼저 collect 를 돌리세요.")
@@ -133,6 +143,15 @@ def _apply_feedback(profile: dict, notes: list[dict]) -> tuple[dict, list[dict]]
     return profile, notes
 
 
+def _diff_summary(before: dict, after: dict) -> str:
+    """어떤 필드가 어떻게 바뀌었는지 한 줄로 요약한다."""
+    changes = []
+    for field in ("position", "tech_stack", "interests", "level", "language"):
+        if before.get(field) != after.get(field):
+            changes.append(f"{field}: {before.get(field)} → {after.get(field)}")
+    return " | ".join(changes) or "(타임스탬프만)"
+
+
 def _print_picks(picks: list[dict], by_id: dict, candidates: list[dict]) -> None:
     similarity = {c["id"]: c.get("similarity") for c in candidates}
     for pick in picks:
@@ -148,5 +167,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="추천 산출 및 뉴스레터 발송")
     parser.add_argument("--dry-run", action="store_true",
                         help="발송/이력 저장 없이 추천 결과만 출력 (Gmail 설정 불필요)")
+    parser.add_argument("--feedback-only", action="store_true",
+                        help="답장만 읽어 프로필에 반영하고 종료 (발송 없음)")
     args = parser.parse_args()
-    main(dry_run=args.dry_run)
+    main(dry_run=args.dry_run, feedback_only=args.feedback_only)

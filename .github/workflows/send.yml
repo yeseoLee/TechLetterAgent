@@ -10,6 +10,10 @@ on:
         description: "발송 없이 추천 결과만 출력 (Gmail 설정 불필요)"
         type: boolean
         default: false
+      feedback_only:
+        description: "답장만 읽어 프로필에 반영 (발송 없음)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -39,7 +43,10 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
           FEEDBACK_ADDRESS: ${{ secrets.FEEDBACK_ADDRESS }}
-        run: python -m src.run_send ${{ inputs.dry_run && '--dry-run' || '' }}
+        run: |
+          python -m src.run_send \
+            ${{ inputs.dry_run && '--dry-run' || '' }} \
+            ${{ inputs.feedback_only && '--feedback-only' || '' }}
 
       - name: Commit state
         run: |
