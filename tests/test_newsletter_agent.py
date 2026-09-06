@@ -12,8 +12,8 @@ VIDEOS = {
                   "difficulty": "고급", "duration_sec": 600, "summary": "다른 요약."},
 }
 PICKS = [
-    {"id": "rec_001", "video_id": "video_001", "tier": "strong", "reason_text": "잘 맞습니다."},
-    {"id": "rec_002", "video_id": "video_002", "tier": "maybe", "reason_text": "혹시 몰라서."},
+    {"id": "rec_001", "video_id": "video_001", "tier": "near", "reason_text": "잘 맞습니다."},
+    {"id": "rec_002", "video_id": "video_002", "tier": "far", "reason_text": "혹시 몰라서."},
 ]
 
 
@@ -37,7 +37,7 @@ def test_render_includes_every_pick():
 
 def test_render_separates_tiers():
     _, html, _ = render(PICKS, VIDEOS, "me@example.com")
-    assert html.index("추천") < html.index("함께 볼 만한")
+    assert html.index("추천") < html.index("넓혀보기")
 
 
 def test_render_escapes_html_in_titles():
@@ -46,9 +46,9 @@ def test_render_escapes_html_in_titles():
     assert "&lt;script&gt;" in html
 
 
-def test_subject_mentions_top_pick():
+def test_subject_is_weekly_format():
     subject, _, _ = render(PICKS, VIDEOS, "me@example.com")
-    assert "테스트 하네스" in subject
+    assert subject == "Weekly Tech Session 2편"
 
 
 def test_both_feedback_links_present_per_card():
@@ -60,7 +60,7 @@ def test_both_feedback_links_present_per_card():
 
 def test_handles_missing_video_gracefully():
     _, html, text = render([{"id": "rec_009", "video_id": "없음",
-                             "tier": "strong", "reason_text": "이유"}], {}, "me@example.com")
+                             "tier": "near", "reason_text": "이유"}], {}, "me@example.com")
     assert "이유" in html and "이유" in text
 
 

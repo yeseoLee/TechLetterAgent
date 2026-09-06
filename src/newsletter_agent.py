@@ -12,7 +12,9 @@ from urllib.parse import quote
 # 답장 제목 규칙. feedback_agent 가 이 접두사로 정형 피드백을 알아본다.
 SUBJECT_TAG = "[TLA]"
 
-TIER_LABEL = {"strong": "추천", "maybe": "함께 볼 만한"}
+TIER_NEAR, TIER_FAR = "near", "far"
+
+TIER_LABEL = {"near": "추천", "far": "넓혀보기"}
 
 _CSS = """
 body { margin:0; padding:0; background:#f6f7f9;
@@ -39,15 +41,20 @@ h1 { font-size:20px; margin:0 0 4px; }
              border:1px solid #d1d5db; border-radius:6px;
              text-decoration:none; color:#374151; background:#fafafa; }
 .footer { margin-top:32px; font-size:12px; color:#6b7280; line-height:1.7; }
+.discover { margin-top:28px; padding:18px 20px; background:#fff;
+            border:1px dashed #cbd5e1; border-radius:10px; }
+.discover h3 { font-size:14px; margin:0 0 8px; color:#111827; }
+.discover p { font-size:13px; line-height:1.65; margin:0 0 12px; color:#4b5563; }
 """
 
 
-def feedback_mailto(recommendation_id: str, verdict: str, to_addr: str) -> str:
+def feedback_mailto(target_id: str, verdict: str, to_addr: str) -> str:
     """클릭하면 정해진 제목의 답장 메일이 열리는 mailto 링크.
 
     서버가 없어 클릭 트래킹을 못 하므로, 클릭 자체를 메일 한 통으로 바꾼다.
+    verdict 는 like / dislike / channel-yes / channel-no.
     """
-    subject = f"{SUBJECT_TAG} {verdict} {recommendation_id}"
+    subject = f"{SUBJECT_TAG} {verdict} {target_id}"
     return f"mailto:{to_addr}?subject={quote(subject)}"
 
 
@@ -82,45 +89,64 @@ def _escape(text: str) -> str:
             .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
+def discovery_block(proposal: dict, to_addr: str) -> str:
+    """새 채널 제안과 예/아니오 링크."""
+    channel_id = proposal["channel_id"]
+    yes = feedback_mailto(channel_id, "channel-yes", to_addr)
+    no = feedback_mailto(channel_id, "channel-no", to_addr)
+    return f"""
+    <div class="discover">
+      <h3>새 채널 추가할까요?</h3>
+      <p>
+        <b>{_escape(proposal['name'])}</b>
+        · 구독자 {proposal.get('subscriber_count', 0):,}
+        · 영상 {proposal.get('video_count', 0):,}개<br>
+        {_escape(proposal.get('reason', ''))}
+      </p>
+      <p class="actions">
+        <a href="{yes}">예, 추가할게요</a>
+        <a href="{no}">아니오</a>
+      </p>
+    </div>"""
+
+
 def render(picks: list[dict], videos_by_id: dict[str, dict],
-           to_addr: str = "") -> tuple[str, str, str]:
+           to_addr: str = "", proposal: dict | None = None) -> tuple[str, str, str]:
     """반환: (subject, html_body, text_body)."""
     today = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d")
-    strong = [p for p in picks if p["tier"] == "strong"]
-    maybe = [p for p in picks if p["tier"] == "maybe"]
-
-    # 받은편지함에서 제목만 보고 열지 말지 판단할 수 있게, 대표 영상 제목을 앞에 둔다.
-    lead = videos_by_id.get(strong[0]["video_id"], {}).get("title", "") if strong else ""
-    rest = len(picks) - 1
-    subject = (f"{lead} 외 {rest}편" if lead and rest > 0
-               else lead or f"발표 {len(picks)}편")
+    subject = f"Weekly Tech Session {len(picks)}편"
 
     sections = []
-    for tier_picks, label in ((strong, TIER_LABEL["strong"]), (maybe, TIER_LABEL["maybe"])):
+    for tier in (TIER_NEAR, TIER_FAR):
+        tier_picks = [p for p in picks if p["tier"] == tier]
         if not tier_picks:
             continue
         cards = "".join(_card(p, videos_by_id.get(p["video_id"], {}), to_addr)
                         for p in tier_picks)
-        sections.append(f'<p class="section">{label}</p>{cards}')
+        sections.append(f'<p class="section">{TIER_LABEL[tier]}</p>{cards}')
+
+    discover = discovery_block(proposal, to_addr) if proposal else ""
 
     html = f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><style>{_CSS}</style></head>
 <body><div class="wrap">
-  <h1>TechLetter</h1>
+  <h1>Weekly Tech Session</h1>
   <p class="sub">{today} · {len(picks)}편</p>
   {"".join(sections)}
+  {discover}
   <p class="footer">
     답장으로 의견을 남기면 다음 추천에 반영합니다.
   </p>
 </div></body></html>"""
 
-    return subject, html, _text_body(picks, videos_by_id, today)
+    return subject, html, _text_body(picks, videos_by_id, today, proposal)
 
 
-def _text_body(picks: list[dict], videos_by_id: dict[str, dict], today: str) -> str:
+def _text_body(picks: list[dict], videos_by_id: dict[str, dict], today: str,
+               proposal: dict | None = None) -> str:
     """HTML 을 못 보는 클라이언트를 위한 대체 본문."""
-    lines = [f"TechLetter · {today} · {len(picks)}편", ""]
-    for tier in ("strong", "maybe"):
+    lines = [f"Weekly Tech Session · {today} · {len(picks)}편", ""]
+    for tier in (TIER_NEAR, TIER_FAR):
         tier_picks = [p for p in picks if p["tier"] == tier]
         if not tier_picks:
             continue
@@ -135,5 +161,14 @@ def _text_body(picks: list[dict], videos_by_id: dict[str, dict], today: str) -> 
                 f"  {video.get('url', '')}",
                 "",
             ]
+    if proposal:
+        lines += [
+            "[새 채널 추가할까요?]",
+            f"  {proposal['name']} · 영상 {proposal.get('video_count', 0):,}개",
+            f"  {proposal.get('reason', '')}",
+            f"  예: 제목에 '{SUBJECT_TAG} channel-yes {proposal['channel_id']}' 로 답장",
+            f"  아니오: '{SUBJECT_TAG} channel-no {proposal['channel_id']}'",
+            "",
+        ]
     lines.append("답장으로 의견을 남기면 다음 추천에 반영합니다.")
     return "\n".join(lines)

@@ -15,53 +15,69 @@ def _patch(monkeypatch, payload):
     monkeypatch.setattr(ra.llm, "complete_json", lambda *a, **k: payload)
 
 
-def test_returns_exact_counts(monkeypatch):
+def test_returns_two_near_and_one_far(monkeypatch):
     _patch(monkeypatch, {
-        "strong": [{"id": "video_001", "reason": "a"}, {"id": "video_002", "reason": "b"},
-                   {"id": "video_003", "reason": "c"}],
-        "maybe": [{"id": "video_004", "reason": "d"}, {"id": "video_005", "reason": "e"}],
+        "near": [{"id": "video_001", "reason": "a"}, {"id": "video_002", "reason": "b"}],
+        "far": [{"id": "video_005", "reason": "c"}],
     })
     picks = ra.recommend({}, [], CANDIDATES)
-    assert len(picks) == 5
-    assert sum(p["tier"] == "strong" for p in picks) == 3
-    assert sum(p["tier"] == "maybe" for p in picks) == 2
+    assert len(picks) == 3
+    assert sum(p["tier"] == "near" for p in picks) == 2
+    assert sum(p["tier"] == "far" for p in picks) == 1
+
+
+def test_near_is_chosen_by_similarity_not_llm(monkeypatch):
+    """near 는 코드가 유사도 순으로 고른다. LLM 이 다른 id 를 줘도 무시된다."""
+    _patch(monkeypatch, {
+        "near": [{"id": "video_009", "reason": "엉뚱한 선택"},
+                 {"id": "video_010", "reason": "엉뚱한 선택"}],
+        "far": [],
+    })
+    picks = ra.recommend({}, [], CANDIDATES)
+    near_ids = [p["video_id"] for p in picks if p["tier"] == "near"]
+    assert near_ids == ["video_001", "video_002"]  # 유사도 상위 2개
+
+
+def test_far_pool_excludes_near(monkeypatch):
+    near, far_pool = ra.split_pools(CANDIDATES)
+    assert [v["id"] for v in near] == ["video_001", "video_002"]
+    assert not set(v["id"] for v in near) & set(v["id"] for v in far_pool)
 
 
 def test_drops_hallucinated_ids_and_backfills(monkeypatch):
     _patch(monkeypatch, {
-        "strong": [{"id": "video_999", "reason": "없는 영상"}, {"id": "video_002", "reason": "b"}],
-        "maybe": [],
+        "near": [{"id": "video_999", "reason": "없는 영상"}],
+        "far": [{"id": "video_888", "reason": "없는 영상"}],
     })
     picks = ra.recommend({}, [], CANDIDATES)
-    assert len(picks) == 5
-    assert "video_999" not in {p["video_id"] for p in picks}
-    assert sum(p["tier"] == "strong" for p in picks) == 3
+    assert len(picks) == 3
+    assert not {"video_999", "video_888"} & {p["video_id"] for p in picks}
 
 
 def test_deduplicates_across_tiers(monkeypatch):
     _patch(monkeypatch, {
-        "strong": [{"id": "video_001", "reason": "a"}] * 3,
-        "maybe": [{"id": "video_001", "reason": "a"}, {"id": "video_002", "reason": "b"}],
+        "near": [{"id": "video_001", "reason": "a"}] * 2,
+        "far": [{"id": "video_001", "reason": "a"}],
     })
     picks = ra.recommend({}, [], CANDIDATES)
     ids = [p["video_id"] for p in picks]
-    assert len(ids) == len(set(ids)) == 5
+    assert len(ids) == len(set(ids)) == 3
 
 
 def test_truncates_when_llm_returns_too_many(monkeypatch):
     _patch(monkeypatch, {
-        "strong": [{"id": c["id"], "reason": "x"} for c in CANDIDATES[:8]],
-        "maybe": [{"id": c["id"], "reason": "y"} for c in CANDIDATES[8:]],
+        "near": [{"id": c["id"], "reason": "x"} for c in CANDIDATES[:8]],
+        "far": [{"id": c["id"], "reason": "y"} for c in CANDIDATES[8:]],
     })
     picks = ra.recommend({}, [], CANDIDATES)
-    assert sum(p["tier"] == "strong" for p in picks) == 3
-    assert sum(p["tier"] == "maybe" for p in picks) == 2
+    assert sum(p["tier"] == "near" for p in picks) == 2
+    assert sum(p["tier"] == "far" for p in picks) == 1
 
 
 def test_handles_garbage_response(monkeypatch):
     _patch(monkeypatch, ["예상 못 한 리스트"])
     picks = ra.recommend({}, [], CANDIDATES)
-    assert len(picks) == 5  # 전부 유사도 순으로 채워진다
+    assert len(picks) == 3  # 전부 순위로 채워진다
 
 
 def test_empty_candidates_returns_empty(monkeypatch):
@@ -115,7 +131,7 @@ def test_signals_reach_the_prompt(monkeypatch):
 
     def fake(prompt, **kwargs):
         captured["prompt"] = prompt
-        return {"strong": [], "maybe": []}
+        return {"near": [], "far": []}
 
     monkeypatch.setattr(ra.llm, "complete_json", fake)
     ra.recommend({}, [], CANDIDATES,
@@ -129,7 +145,7 @@ def test_no_signal_section_when_empty(monkeypatch):
 
     def fake(prompt, **kwargs):
         captured["prompt"] = prompt
-        return {"strong": [], "maybe": []}
+        return {"near": [], "far": []}
 
     monkeypatch.setattr(ra.llm, "complete_json", fake)
     ra.recommend({}, [], CANDIDATES, {"liked": [], "disliked": []})

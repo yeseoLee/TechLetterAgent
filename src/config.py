@@ -10,6 +10,7 @@ USER_PROFILE = DATA_DIR / "user_profile.json"
 USER_NOTES = DATA_DIR / "user_notes.json"
 VIDEOS = DATA_DIR / "videos.json"
 EMBEDDINGS = DATA_DIR / "embeddings.json"  # video_id -> float32 base64
+DISCOVERIES = DATA_DIR / "discoveries.json"  # 주간 채널 탐색 제안과 응답
 RECOMMENDATIONS = DATA_DIR / "recommendations.json"
 FEEDBACK_LOG = DATA_DIR / "feedback_log.json"
 
@@ -42,8 +43,8 @@ TOKENS_FILTER = 4000        # 발표 여부 yes/no 판정
 TOKENS_ANALYZE = 8000       # 요약·난이도·대상·주제 생성
 TOKENS_RECOMMEND = 16000    # 후보 30개 재검토
 
-# collect 1회당 분석할 영상 수 상한. 한 번에 과하게 도는 것을 막는 안전장치.
-MAX_ANALYSIS_PER_RUN = 50
+# 주 1회 실행에서 새로 분석할 영상 수 목표.
+MAX_ANALYSIS_PER_RUN = 10
 
 # --- 임베딩 --------------------------------------------------------------
 # 임베딩도 OpenRouter 를 쓴다. 목록은 /api/v1/embeddings/models 에 따로 있다
@@ -53,13 +54,24 @@ EMBEDDING_MODEL = "qwen/qwen3-embedding-8b"
 EMBEDDING_INPUT_LIMIT = 8000
 
 # --- 수집 ----------------------------------------------------------------
-# 소스당 조회할 최근 영상 수. YouTube Data API 는 50개까지 1 quota unit 이다.
-PER_SOURCE_LIMIT = 20
+# 소스당 훑을 영상 수. 신규 업로드만이 아니라 예전 발표까지 후보에 넣으려면
+# 목록을 깊게 봐야 한다. 50개당 1 quota unit 이라 넉넉히 잡아도 부담이 없다.
+PER_SOURCE_LIMIT = 150
 
-# 추천 구성
+# 주간 신규 채널/재생목록 탐색에서 검색할 키워드 후보 수.
+DISCOVERY_SEARCH_RESULTS = 25
+
+# 추천 구성: 매주 3편.
+#   near — 임베딩 유사도 상위 2편. 확실히 취향에 맞는 것.
+#   far  — 유사도는 낮지만 볼 가치가 있다고 LLM 이 판단한 1편. 취향이 굳는 것을 막는다.
 TOP_K_CANDIDATES = 30
-N_STRONG = 3
-N_MAYBE = 2
+N_NEAR = 2
+N_FAR = 1
+
+# far 후보 풀: 유사도 순위에서 이 구간을 뽑아 LLM 에게 판정을 맡긴다.
+# 최상위는 near 와 겹치고, 최하위는 아예 무관한 영상이라 중간 구간을 본다.
+FAR_POOL_START = 0.35   # 전체 후보의 35% 지점부터
+FAR_POOL_SIZE = 15
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")

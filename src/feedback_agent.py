@@ -17,10 +17,11 @@ from .memory_agent import EDITABLE
 
 log = logging.getLogger(__name__)
 
-# "[TLA] like rec_004" 형태의 정형 피드백.
+# "[TLA] like rec_004" / "[TLA] channel-yes UC..." 형태의 정형 피드백.
 # 메일 클라이언트가 "Re:", "RE:", "Fwd:" 를 여러 겹 붙이므로 앞에서 걷어낸다.
 _TAGGED = re.compile(
-    r"^(?:\s*(?:re|fwd|fw)\s*:\s*)*\[TLA\]\s+(like|dislike)\s+(rec_\d+)",
+    r"^(?:\s*(?:re|fwd|fw)\s*:\s*)*\[TLA\]\s+"
+    r"(like|dislike|channel-yes|channel-no)\s+([\w-]+)",
     re.IGNORECASE,
 )
 
@@ -49,15 +50,20 @@ def parse_reply(reply: dict, profile: dict) -> dict:
     반환: {type, profile_diff, note_text, likes, dislikes, recommendation_id}
     """
     if tagged := _TAGGED.match(reply.get("subject", "")):
-        verdict, rec_id = tagged.group(1).lower(), tagged.group(2)
-        log.info("정형 피드백: %s %s", verdict, rec_id)
+        verdict, target = tagged.group(1).lower(), tagged.group(2)
+        log.info("정형 피드백: %s %s", verdict, target)
+
+        if verdict.startswith("channel-"):
+            return {**_empty(), "type": verdict, "channel_id": target}
+
         return {
             "type": verdict,
             "profile_diff": {},
             "note_text": None,
-            "likes": [rec_id] if verdict == "like" else [],
-            "dislikes": [rec_id] if verdict == "dislike" else [],
-            "recommendation_id": rec_id,
+            "likes": [target] if verdict == "like" else [],
+            "dislikes": [target] if verdict == "dislike" else [],
+            "recommendation_id": target,
+            "channel_id": None,
         }
 
     body = (reply.get("body") or "").strip()
@@ -85,6 +91,7 @@ def parse_reply(reply: dict, profile: dict) -> dict:
 
     return {
         "type": "reply_text",
+        "channel_id": None,
         "profile_diff": _sanitize(result.get("profile_diff")),
         "note_text": (result.get("note_text") or body)[:500],
         "likes": [str(x) for x in (result.get("likes") or [])],
@@ -102,4 +109,4 @@ def _sanitize(diff) -> dict:
 
 def _empty() -> dict:
     return {"type": "reply_text", "profile_diff": {}, "note_text": None,
-            "likes": [], "dislikes": [], "recommendation_id": None}
+            "likes": [], "dislikes": [], "recommendation_id": None, "channel_id": None}

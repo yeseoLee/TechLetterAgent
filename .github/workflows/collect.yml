@@ -2,8 +2,8 @@ name: collect
 
 on:
   schedule:
-    # 매일 KST 06:00 (UTC 21:00)
-    - cron: "0 21 * * *"
+    # 매주 월요일 KST 05:00 (일요일 UTC 20:00). send 2시간 전에 후보를 채운다.
+    - cron: "0 20 * * 0"
   workflow_dispatch:
     inputs:
       limit:

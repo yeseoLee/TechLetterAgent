@@ -15,8 +15,8 @@ import argparse
 import logging
 from datetime import datetime, timezone
 
-from . import (cluster_agent, config, content_store, memory_agent,
-               recommendation_agent)
+from . import (cluster_agent, config, content_store, discovery_agent,
+               memory_agent, recommendation_agent)
 
 log = logging.getLogger(__name__)
 
@@ -72,6 +72,15 @@ def main(dry_run: bool = False, feedback_only: bool = False) -> None:
                  len(signals["liked"]), len(signals["disliked"]))
     picks = recommendation_agent.recommend(profile, notes, candidates, signals)
 
+    # 주간 신규 채널 제안. 실패해도 뉴스레터 발송은 막지 않는다.
+    proposal = None
+    try:
+        proposal = discovery_agent.discover(profile)
+        if proposal:
+            log.info("새 채널 제안: %s (%s)", proposal["name"], proposal["channel_id"])
+    except Exception as exc:
+        log.warning("채널 탐색 실패, 이번 회차는 건너뜁니다: %s", exc)
+
     _print_picks(picks, by_id, candidates)
 
     if dry_run:
@@ -90,7 +99,7 @@ def main(dry_run: bool = False, feedback_only: bool = False) -> None:
     # mailto 피드백 링크와 Reply-To 는 피드백 주소를 쓴다. 답장이 태그를 달고
     # 돌아와야 일상 메일과 구분해서 골라낼 수 있다.
     subject, html_body, text_body = newsletter_agent.render(
-        picks, by_id, config.FEEDBACK_ADDRESS)
+        picks, by_id, config.FEEDBACK_ADDRESS, proposal)
     message_id = email_client.send(subject, html_body, text_body,
                                    config.RECIPIENT_EMAIL, config.FEEDBACK_ADDRESS)
 
@@ -104,6 +113,14 @@ def main(dry_run: bool = False, feedback_only: bool = False) -> None:
             "gmail_message_id": message_id,
         })
     content_store.save(config.RECOMMENDATIONS, history)
+
+    # 제안한 채널을 기록해 두면 답장이 왔을 때 이름/언어를 되짚을 수 있고,
+    # 답이 없어도 같은 채널을 다시 제안하지 않는다.
+    if proposal:
+        discoveries = content_store.load(config.DISCOVERIES, []) or []
+        discoveries.append({**proposal, "proposed_at": sent_at, "answer": None})
+        content_store.save(config.DISCOVERIES, discoveries)
+
     log.info("발송 완료. 추천 %d건을 이력에 기록했습니다.", len(picks))
 
 
@@ -131,6 +148,11 @@ def _apply_feedback(profile: dict, notes: list[dict]) -> tuple[dict, list[dict]]
 
     for reply in replies:
         parsed = feedback_agent.parse_reply(reply, profile)
+
+        if channel_id := parsed.get("channel_id"):
+            memory_agent.apply_channel_answer(
+                channel_id, parsed["type"] == "channel-yes")
+
         profile = memory_agent.apply_diff(profile, parsed.get("profile_diff"))
         if note_text := parsed.get("note_text"):
             notes = memory_agent.add_note(notes, note_text, parsed.get("recommendation_id"))

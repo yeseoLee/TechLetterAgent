@@ -85,6 +85,59 @@ def list_playlist_videos(playlist_id: str, limit: int = PAGE_SIZE) -> list[dict]
     return items
 
 
+def search_channels(query: str, max_results: int = 25,
+                    language: str | None = None) -> list[dict]:
+    """채널을 검색한다. 신규 소스 탐색의 "검색 도구" 역할.
+
+    search.list 는 100 quota units 로 다른 호출보다 비싸다(목록/상세 조회는 1).
+    주 1회만 부르므로 10,000 units/일 한도에는 여유가 크다.
+    """
+    params = {
+        "part": "snippet",
+        "type": "channel",
+        "q": query,
+        "maxResults": min(max_results, 50),
+        "order": "relevance",
+    }
+    if language:
+        params["relevanceLanguage"] = language
+
+    payload = _get("search", params)
+    results = []
+    for item in payload.get("items", []):
+        snippet = item.get("snippet") or {}
+        channel_id = (item.get("id") or {}).get("channelId")
+        if not channel_id:
+            continue
+        results.append({
+            "channel_id": channel_id,
+            "name": snippet.get("channelTitle") or snippet.get("title", ""),
+            "description": (snippet.get("description") or "")[:400],
+        })
+    return results
+
+
+def fetch_channel_stats(channel_ids: list[str]) -> dict[str, dict]:
+    """채널의 구독자/영상 수를 가져온다. 활동이 없는 채널을 거르는 데 쓴다."""
+    stats: dict[str, dict] = {}
+    for start in range(0, len(channel_ids), PAGE_SIZE):
+        payload = _get("channels", {
+            "part": "snippet,statistics",
+            "id": ",".join(channel_ids[start:start + PAGE_SIZE]),
+        })
+        for item in payload.get("items", []):
+            snippet = item.get("snippet") or {}
+            statistics = item.get("statistics") or {}
+            stats[item["id"]] = {
+                "name": snippet.get("title", ""),
+                "description": (snippet.get("description") or "")[:600],
+                "published_at": snippet.get("publishedAt"),
+                "subscriber_count": int(statistics.get("subscriberCount", 0)),
+                "video_count": int(statistics.get("videoCount", 0)),
+            }
+    return stats
+
+
 def fetch_details(youtube_ids: list[str]) -> dict[str, dict]:
     """영상 상세(길이·전체 설명·태그·조회수)를 한 번에 가져온다. 50개씩 묶어 호출."""
     details: dict[str, dict] = {}

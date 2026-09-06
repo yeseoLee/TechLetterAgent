@@ -82,3 +82,44 @@ def add_note(notes: list[dict], text: str, recommendation_id: str | None = None)
         "created_at": _now(),
     })
     return notes
+
+
+def apply_channel_answer(channel_id: str, approved: bool) -> bool:
+    """채널 제안에 대한 예/아니오를 반영한다.
+
+    예 -> config/channels.json 화이트리스트에 추가.
+    아니오 -> discoveries.json 에만 남긴다. _known_channel_ids 가 이를 읽어
+              같은 채널을 다시 제안하지 않는다.
+    반환: 화이트리스트가 실제로 바뀌었는지.
+    """
+    discoveries = content_store.load(config.DISCOVERIES, []) or []
+    for entry in discoveries:
+        if entry.get("channel_id") == channel_id:
+            entry["answer"] = "yes" if approved else "no"
+            entry["answered_at"] = _now()
+            break
+    else:
+        discoveries.append({"channel_id": channel_id,
+                            "answer": "yes" if approved else "no",
+                            "answered_at": _now()})
+    content_store.save(config.DISCOVERIES, discoveries)
+
+    if not approved:
+        log.info("채널 제안 거절: %s", channel_id)
+        return False
+
+    proposal = next((d for d in discoveries if d.get("channel_id") == channel_id), {})
+    sources = content_store.load(config.CHANNELS, {}) or {}
+    channels = sources.setdefault("channels", [])
+    if any(c.get("channel_id") == channel_id for c in channels):
+        return False
+
+    channels.append({
+        "name": proposal.get("name", channel_id),
+        "channel_id": channel_id,
+        "language": proposal.get("language", "ko"),
+        "added_by": "discovery",
+    })
+    content_store.save(config.CHANNELS, sources)
+    log.info("채널 추가: %s (%s)", proposal.get("name", ""), channel_id)
+    return True
