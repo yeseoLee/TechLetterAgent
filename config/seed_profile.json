@@ -1,15 +1,22 @@
 {
   "_comment": "최초 1회만 사용됩니다. data/user_profile.json 이 없을 때 이 값으로 초기화하고, 이후에는 이메일 답장 피드백으로 갱신됩니다.",
   "position": "AI/ML 엔지니어",
-  "tech_stack": ["Python"],
+  "tech_stack": [
+    "Python"
+  ],
   "interests": [
     "AI 에이전트 / LLM 앱",
     "테스트 / 품질 자동화",
     "개발 생산성 / 도구"
   ],
   "level": "취준·주니어 (0-2년차)",
-  "language": ["ko", "en"],
+  "language": [
+    "ko",
+    "en"
+  ],
   "few_shot_videos": [
-    "https://www.youtube.com/watch?v=wo0Rsh9hlTo"
+    "https://www.youtube.com/watch?v=wo0Rsh9hlTo",
+    "https://www.youtube.com/watch?v=EEsYbiqqcc0",
+    "https://www.youtube.com/watch?v=VdElizwWE4s"
   ]
 }

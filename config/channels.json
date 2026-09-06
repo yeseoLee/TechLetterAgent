@@ -1,5 +1,5 @@
 {
-  "_comment": "유튜브 채널 화이트리스트. channel_id 는 `python scripts/resolve_channel_id.py <채널 URL>` 로 확인. RSS 피드: https://www.youtube.com/feeds/videos.xml?channel_id=<ID>",
+  "_comment": "유튜브 수집 소스. channel_id 는 `python scripts/resolve_channel_id.py <URL>` 로 확인. RSS 피드: 채널 .../videos.xml?channel_id=<ID>, 재생목록 .../videos.xml?playlist_id=<ID>",
   "channels": [
     {
       "name": "NAVER D2",
@@ -29,6 +29,23 @@
       "name": "PyCon Korea",
       "handle": "@PyConKRtube",
       "channel_id": "UC26x6D5xpKx6io4ShfXa_Ow",
+      "language": "ko"
+    }
+  ],
+  "playlists": [
+    {
+      "name": "토스 SLASH ㅣ개발자 콘퍼런스",
+      "playlist_id": "PL1DJtS1Hv1PiGXmgruP1_gM2TSvQiOsFL",
+      "language": "ko"
+    },
+    {
+      "name": "우아콘 2025",
+      "playlist_id": "PLgXGHBqgT2TuPhUGHTe1oFkWJDu3u6-Si",
+      "language": "ko"
+    },
+    {
+      "name": "Tech-Verse 2026 (Korean)",
+      "playlist_id": "PLGIkkJsrT83Y",
       "language": "ko"
     }
   ],

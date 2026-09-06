@@ -11,7 +11,8 @@
 
 ```
 collect.yml (매일)
-  채널 RSS → 신규 영상 감지 → yt-dlp 자막 추출 (자막 없으면 건너뜀)
+  채널·재생목록 RSS → 신규 영상 감지 → 사전 필터(비발표 콘텐츠 제거)
+  → yt-dlp 자막 추출 (자막 없으면 건너뜀)
   → OpenRouter 무료 모델로 요약/난이도/타겟대상 생성 → 임베딩 → data/videos.json 커밋
 
 send.yml (월/수/금)
@@ -61,13 +62,24 @@ OpenRouter `:free` 슬러그는 토큰 과금이 0 인 대신 **계정 단위 �
 
 `few_shot_videos` 에는 "내가 좋아했던 발표 영상" URL 3~5개를 넣습니다. 초기 취향 추론에 쓰입니다.
 
-### 2. 채널 화이트리스트 채우기
+### 2. 수집 소스
 
-`config/channels.json` 의 `channel_id` 를 채웁니다.
+`config/channels.json` 에 채널과 재생목록을 등록합니다. 채널 ID 는 다음으로 확인합니다.
 
 ```bash
-python scripts/resolve_channel_id.py https://www.youtube.com/@woowatech
+python scripts/resolve_channel_id.py https://www.youtube.com/@naver_d2
 ```
+
+재생목록 ID 는 URL 의 `list=` 뒤 문자열을 그대로 씁니다.
+
+**사전 필터** — 화이트리스트 채널에도 발표가 아닌 영상이 섞입니다(BGM 플레이리스트,
+채용 웨비나, 행사 스케치 등). `src/prefilter.py` 가 2단계로 걸러냅니다.
+
+1. 규칙 판정 — 무료. 제목 키워드 + 영상 길이(8분~3시간)로 명백한 것만 제거
+2. LLM 판정 — 1단계 통과분만. 무료 모델 요청 한도를 아끼기 위한 순서
+
+잘못 걸러지는 영상이 보이면 `prefilter.py` 의 `TITLE_DENY` / `TITLE_ALLOW` 를 조정하세요.
+`TITLE_ALLOW` 가 `TITLE_DENY` 보다 우선합니다.
 
 ### 3. Gmail OAuth 설정
 
@@ -116,11 +128,20 @@ python -m src.run_send
 
 `workflow_dispatch` 가 열려 있어 GitHub UI 에서 수동 실행도 가능합니다.
 
+테스트는 API 키 없이 돌아갑니다.
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests/ -q
+```
+
 ## 레포 구조
 
 | 경로 | 역할 |
 | --- | --- |
-| `src/content_agent.py` | 채널 RSS 수집 + yt-dlp 자막 추출 |
+| `src/content_agent.py` | 채널·재생목록 RSS 수집 + yt-dlp 자막 추출 |
+| `src/prefilter.py` | 비발표 콘텐츠 제거 (규칙 → LLM 2단계) |
+| `src/llm.py` | OpenRouter 호출 래퍼 (스로틀·재시도·JSON 파싱) |
 | `src/article_analyzer.py` | LLM 요약/난이도/타겟 생성, Whisper 폴백, 임베딩 |
 | `src/content_store.py` | `data/*.json` 읽기/쓰기 |
 | `src/cluster_agent.py` | 코사인 유사도 Top-30 후보 추출 |
