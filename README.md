@@ -26,27 +26,22 @@ send.yml (월/수/금)
 
 ## 모델
 
-LLM 호출은 전부 **OpenRouter 무료 모델**을 씁니다. 슬러그는 `src/config.py` 상수라 언제든 교체 가능합니다.
+LLM 호출은 전부 **OpenRouter** 를 경유합니다. 슬러그는 `src/config.py` 상수라 언제든 교체 가능합니다.
 
 | 용도 | 모델 | 비고 |
 | --- | --- | --- |
-| 요약 · 난이도 · 답장 파싱 | `google/gemma-4-31b-it:free` | 31B instruct, 멀티링구얼. 양 많은 단순 작업용 |
-| Top-30 추천 재검토 | `z-ai/glm-5.2:free` | reasoning 모델, 256K ctx. 판단 품질이 중요한 단계 |
-| 임베딩 | `text-embedding-3-small` (OpenAI) | OpenRouter 에 임베딩 모델이 없어 유일하게 유료. $0.02/1M 토큰 |
+| 요약 · 난이도 · 답장 파싱 | `deepseek/deepseek-v4-flash-0731` | 1.31M ctx. $0.05/M in, $0.10/M out |
+| Top-30 추천 재검토 | `deepseek/deepseek-v4-flash-0731` | 같은 모델. 추천 품질이 아쉬우면 이쪽만 더 센 모델로 올립니다 |
+| 임베딩 | `text-embedding-3-small` (OpenAI) | OpenRouter 에 임베딩 모델이 없어 별도. $0.02/1M 토큰 |
 
-### 무료 모델 rate limit
+### 비용
 
-OpenRouter `:free` 슬러그는 토큰 과금이 0 인 대신 **계정 단위 요청 수 제한**이 걸립니다
-(분당 요청 수, 그리고 일일 요청 수 — 일일 한도는 계정에 충전된 크레딧 잔액에 따라 달라집니다).
-정확한 현재 한도는 [OpenRouter API Rate Limits 문서](https://openrouter.ai/docs/api-reference/limits)를 확인하세요.
+유료 슬러그라 **OpenRouter 계정에 크레딧이 있어야** 동작합니다. 무료 티어의 분당/일일
+요청 수 제한은 없습니다.
 
-코드 쪽 대응:
-
-- `src/llm.py` 가 호출 간 최소 간격(`LLM_MIN_INTERVAL_SECONDS`)을 지키고, 429 에 지수 백오프로 재시도합니다.
-- `MAX_ANALYSIS_PER_RUN`(기본 15)으로 collect 1회당 LLM 호출 수를 제한합니다.
-  신규 영상이 이보다 많으면 다음 실행으로 밀립니다.
-
-한도에 계속 걸리면 `config.py` 의 슬러그를 유료 모델로 바꾸는 게 가장 간단한 해법입니다.
+영상 1건 분석에 입력 1~2K 토큰, 출력 300 토큰 수준이라 100건을 돌려도 몇 센트입니다.
+`MAX_ANALYSIS_PER_RUN`(기본 50)은 비용 제한이 아니라 한 번에 과하게 도는 것을 막는
+안전장치입니다.
 
 ## 초기 설정
 
@@ -166,8 +161,6 @@ python -m pytest tests/ -q
   경우가 많고, 자동 자막보다 오히려 정확합니다.
   로컬(주거용 IP)에서는 yt-dlp 가 동작하므로 `--with-transcript` 로 자막을 함께 넣을 수 있습니다.
 - **설명이 부실한 영상은 건너뜁니다.** 설명 40자 미만이면 분석 근거가 없다고 보고 제외합니다.
-- **무료 모델 품질**: 요약·추천 이유의 한국어 품질이 유료 모델보다 떨어질 수 있습니다.
-  `src/config.py` 의 `MODEL_CHEAP` / `MODEL_SMART` 만 바꾸면 유료 모델로 전환됩니다.
 - **공개 레포**: `data/` 에 프로필·관심사·피드백 답장 원문이 커밋되어 공개됩니다.
   비공개로 바꾸려면 `gh repo edit --visibility private --accept-visibility-change-consequences`.
 
