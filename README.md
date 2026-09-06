@@ -147,12 +147,31 @@ python -m pytest tests/ -q
 | `src/llm.py` | OpenRouter 호출 래퍼 (스로틀·재시도·JSON 파싱) |
 | `src/article_analyzer.py` | LLM 요약/난이도/타겟 생성, Whisper 폴백, 임베딩 |
 | `src/content_store.py` | `data/*.json` 읽기/쓰기 |
+| `src/embedding_store.py` | 임베딩 저장 (float32 base64, 별도 파일) |
 | `src/cluster_agent.py` | 코사인 유사도 Top-30 후보 추출 |
 | `src/recommendation_agent.py` | Sonnet 5 재검토 → 강추 3 / 혹시나 2 |
 | `src/newsletter_agent.py` | 이메일 본문 포맷팅 (mailto 피드백 버튼 포함) |
 | `src/email_client.py` | Gmail API 발송/답장 조회 |
 | `src/feedback_agent.py` | 답장 파싱 → 프로필 diff 제안 |
 | `src/memory_agent.py` | 프로필/메모 갱신 |
+
+## 데이터 저장
+
+상태는 전부 레포 안 `data/*.json` 에 있고, 워크플로우가 실행될 때마다 커밋됩니다.
+
+| 파일 | 내용 |
+| --- | --- |
+| `videos.json` | 영상 메타데이터 + 요약/난이도/대상/주제 |
+| `embeddings.json` | `video_id` → float32 base64 임베딩 |
+| `user_profile.json` | 구조화 프로필 |
+| `user_notes.json` | 답장에서 뽑은 자유 텍스트 메모 |
+| `recommendations.json` | 추천 이력 (중복 추천 방지) |
+| `feedback_log.json` | 피드백 로그 |
+
+**임베딩을 왜 분리했나** — 인라인으로 넣으면 영상 1건당 임베딩 90KB, 나머지 1.2KB 로
+파일의 99%가 임베딩입니다. 매 실행마다 파일 전체를 다시 커밋하는 구조라 git 히스토리가
+실행 횟수만큼 누적됩니다. 별도 파일 + float32 base64 로 바꿔서 전체 크기를 20%로 줄이고,
+`videos.json` 은 git diff 로 실제 내용 변화를 읽을 수 있게 유지했습니다.
 
 ## 알려진 제약
 

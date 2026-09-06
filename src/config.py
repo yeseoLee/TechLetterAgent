@@ -9,6 +9,7 @@ CONFIG_DIR = ROOT / "config"
 USER_PROFILE = DATA_DIR / "user_profile.json"
 USER_NOTES = DATA_DIR / "user_notes.json"
 VIDEOS = DATA_DIR / "videos.json"
+EMBEDDINGS = DATA_DIR / "embeddings.json"  # video_id -> float32 base64
 RECOMMENDATIONS = DATA_DIR / "recommendations.json"
 FEEDBACK_LOG = DATA_DIR / "feedback_log.json"
 

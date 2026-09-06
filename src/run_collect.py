@@ -8,7 +8,7 @@ import argparse
 import logging
 from datetime import datetime, timezone
 
-from . import article_analyzer, config, content_agent, content_store, prefilter
+from . import article_analyzer, config, content_agent, content_store, embedding_store, prefilter
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +30,7 @@ def main(limit: int | None = None, use_llm_filter: bool = True,
     limit = limit or config.MAX_ANALYSIS_PER_RUN
 
     videos = content_store.load(config.VIDEOS, [])
+    embeddings = embedding_store.load_all()
     fresh = content_agent.collect_new_videos(per_source=config.PER_SOURCE_LIMIT)
     if not fresh:
         return
@@ -71,7 +72,7 @@ def main(limit: int | None = None, use_llm_filter: bool = True,
         # 5) 요약/난이도/타겟 생성 후 임베딩.
         try:
             article_analyzer.analyze(entry)
-            entry["embedding"] = article_analyzer.embed_video(entry)
+            vector = article_analyzer.embed_video(entry)
         except Exception as exc:
             log.warning("분석 실패 (%s): %s", entry["title"][:40], exc)
             stats["분석 실패"] += 1
@@ -86,12 +87,15 @@ def main(limit: int | None = None, use_llm_filter: bool = True,
 
         entry["id"] = content_store.next_id(videos, "video")
         entry["created_at"] = _now()
+        # 임베딩은 videos.json 이 아니라 embeddings.json 에 따로 넣는다.
+        embeddings[entry["id"]] = embedding_store.encode(vector)
         videos.append(entry)
         added += 1
         stats["추가"] += 1
         log.info("추가 [%s] %s", entry["difficulty"], entry["title"][:50])
 
     content_store.save(config.VIDEOS, videos)
+    embedding_store.save_all(embeddings)
     log.info("결과: %s | 저장된 영상 총 %d개", stats, len(videos))
 
 
