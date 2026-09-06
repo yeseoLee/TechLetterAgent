@@ -63,13 +63,42 @@ def rule_check(video: dict) -> tuple[bool, str]:
     return True, "통과"
 
 
+_LLM_SYSTEM = """당신은 개발자 컨퍼런스 영상을 분류합니다.
+주어진 영상이 '개발자를 대상으로 한 기술 발표·강연·튜토리얼'인지 판단하세요.
+
+기술 발표가 아닌 것의 예: 채용 설명회, 회사 홍보, 행사 스케치·티저, 브이로그,
+음악/BGM, 패널 토크쇼, 오프닝/클로징 안내 방송.
+키노트는 기술 내용이 있으면 발표로 봅니다.
+
+{"is_talk": true 또는 false, "reason": "20자 이내 한국어 사유"} 형식으로만 답하세요."""
+
+
 def llm_check(video: dict) -> tuple[bool, str]:
     """규칙으로 판단이 안 되는 영상을 config.MODEL_CHEAP 로 판정한다.
 
-    제목 + 채널명 + 설명 앞부분만 넣는다 (자막 추출 전 단계이므로).
-    반환: (기술 발표인지 여부, 사유).
+    자막 추출 전 단계이므로 제목 + 채널명 + 설명 앞부분만 넣는다.
+    LLM 호출이 실패하면 통과시킨다 — 뒤의 추천 단계에서 다시 걸러질 기회가 있고,
+    수집 자체가 멈추는 편이 더 나쁘다.
     """
-    raise NotImplementedError
+    from . import llm
+
+    prompt = (
+        f"채널: {video.get('channel', '')}\n"
+        f"제목: {video.get('title', '')}\n"
+        f"길이: {video.get('duration_sec', '?')}초\n"
+        f"설명: {(video.get('description') or '')[:500]}"
+    )
+    try:
+        result = llm.complete_json(
+            prompt, model=config.MODEL_CHEAP, system=_LLM_SYSTEM,
+            max_tokens=200, temperature=0,
+        )
+    except Exception as exc:
+        return True, f"LLM 판정 실패, 통과: {exc}"
+
+    if not isinstance(result, dict) or "is_talk" not in result:
+        return True, "LLM 응답 형식 이상, 통과"
+    return bool(result["is_talk"]), str(result.get("reason", ""))[:40]
 
 
 def is_talk(video: dict, *, use_llm: bool = True) -> tuple[bool, str]:

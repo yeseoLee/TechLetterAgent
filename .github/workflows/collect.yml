@@ -5,6 +5,15 @@ on:
     # 매일 KST 06:00 (UTC 21:00)
     - cron: "0 21 * * *"
   workflow_dispatch:
+    inputs:
+      limit:
+        description: "이번 실행에서 분석할 최대 영상 수"
+        required: false
+        default: ""
+      no_llm_filter:
+        description: "LLM 사전 필터 건너뛰기"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -30,7 +39,10 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: python -m src.run_collect
+        run: |
+          python -m src.run_collect \
+            ${{ inputs.limit && format('--limit {0}', inputs.limit) || '' }} \
+            ${{ inputs.no_llm_filter && '--no-llm-filter' || '' }}
 
       - name: Commit state
         run: |
