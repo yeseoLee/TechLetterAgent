@@ -63,14 +63,19 @@ def main(dry_run: bool = False) -> None:
     # 4~6) 포맷팅 → 발송 → 이력 저장.
     from . import email_client, newsletter_agent
 
-    subject, html_body, text_body = newsletter_agent.render(picks, by_id)
-    message_id = email_client.send(subject, html_body, text_body, config.RECIPIENT_EMAIL)
-
+    # 추천 이력 id 를 먼저 확정해야 mailto 피드백 링크에 넣을 수 있다.
     history = content_store.load(config.RECOMMENDATIONS, []) or []
     sent_at = _now()
     for pick in picks:
+        pick["id"] = content_store.next_id(history + picks, "rec")
+
+    subject, html_body, text_body = newsletter_agent.render(
+        picks, by_id, config.RECIPIENT_EMAIL)
+    message_id = email_client.send(subject, html_body, text_body, config.RECIPIENT_EMAIL)
+
+    for pick in picks:
         history.append({
-            "id": content_store.next_id(history, "rec"),
+            "id": pick["id"],
             "video_id": pick["video_id"],
             "tier": pick["tier"],
             "reason_text": pick["reason_text"],
