@@ -1,13 +1,139 @@
 """send.yml 진입점.
 
-순서: (1) 답장 확인·프로필 반영 → (2) 후보 Top-30 → (3) 추천 5개 확정
-     → (4) 이메일 포맷팅 → (5) Gmail 발송 → (6) recommendations.json 갱신
+순서:
+  1) Gmail 답장 확인 → 프로필/메모 반영
+  2) 임베딩 유사도로 후보 Top-30 (기추천 제외)
+  3) LLM 재검토로 강추 3 + 혹시나 2 확정
+  4) 이메일 포맷팅
+  5) Gmail 발송
+  6) recommendations.json 갱신
+
+--dry-run 은 1·5·6 을 건너뛰고 추천 결과만 출력한다. Gmail 설정 없이
+매칭 품질을 확인할 때 쓴다.
 """
+import argparse
+import logging
+from datetime import datetime, timezone
+
+from . import (cluster_agent, config, content_store, memory_agent,
+               recommendation_agent)
+
+log = logging.getLogger(__name__)
 
 
-def main() -> None:
-    raise NotImplementedError
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def main(dry_run: bool = False) -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+
+    profile = memory_agent.bootstrap_profile()
+    notes = content_store.load(config.USER_NOTES, []) or []
+    videos = content_store.load(config.VIDEOS, []) or []
+
+    if not videos:
+        log.error("분석된 영상이 없습니다. 먼저 collect 를 돌리세요.")
+        return
+
+    # 1) 지난 발송 이후의 답장을 반영한다.
+    if not dry_run:
+        profile, notes = _apply_feedback(profile, notes)
+
+    # 2) 후보 Top-K.
+    candidates = cluster_agent.top_candidates(
+        profile, notes, videos,
+        exclude=cluster_agent.already_recommended(),
+        k=config.TOP_K_CANDIDATES,
+    )
+    if not candidates:
+        log.error("추천할 후보가 없습니다.")
+        return
+
+    # 3) LLM 재검토.
+    picks = recommendation_agent.recommend(profile, notes, candidates)
+    by_id = {v["id"]: v for v in videos}
+
+    _print_picks(picks, by_id, candidates)
+
+    if dry_run:
+        log.info("dry-run: 발송과 이력 저장을 건너뜁니다.")
+        return
+
+    # 4~6) 포맷팅 → 발송 → 이력 저장.
+    from . import email_client, newsletter_agent
+
+    subject, html_body, text_body = newsletter_agent.render(picks, by_id)
+    message_id = email_client.send(subject, html_body, text_body, config.RECIPIENT_EMAIL)
+
+    history = content_store.load(config.RECOMMENDATIONS, []) or []
+    sent_at = _now()
+    for pick in picks:
+        history.append({
+            "id": content_store.next_id(history, "rec"),
+            "video_id": pick["video_id"],
+            "tier": pick["tier"],
+            "reason_text": pick["reason_text"],
+            "sent_at": sent_at,
+            "gmail_message_id": message_id,
+        })
+    content_store.save(config.RECOMMENDATIONS, history)
+    log.info("발송 완료. 추천 %d건을 이력에 기록했습니다.", len(picks))
+
+
+def _apply_feedback(profile: dict, notes: list[dict]) -> tuple[dict, list[dict]]:
+    """Gmail 답장을 읽어 프로필과 메모에 반영한다."""
+    from . import email_client, feedback_agent
+
+    history = content_store.load(config.RECOMMENDATIONS, []) or []
+    last_sent = max((r.get("sent_at", "") for r in history), default="")
+
+    try:
+        replies = email_client.fetch_replies_since(last_sent)
+    except Exception as exc:
+        log.warning("답장 조회 실패, 이번 회차는 건너뜁니다: %s", exc)
+        return profile, notes
+
+    if not replies:
+        log.info("새 답장 없음")
+        return profile, notes
+
+    feedback_log = content_store.load(config.FEEDBACK_LOG, []) or []
+    for reply in replies:
+        parsed = feedback_agent.parse_reply(reply, profile)
+        profile = memory_agent.apply_diff(profile, parsed.get("profile_diff"))
+        if note_text := parsed.get("note_text"):
+            notes = memory_agent.add_note(notes, note_text, parsed.get("recommendation_id"))
+        feedback_log.append({
+            "id": content_store.next_id(feedback_log, "fb"),
+            "recommendation_id": parsed.get("recommendation_id"),
+            "type": parsed.get("type", "reply_text"),
+            "raw_text": reply.get("body", ""),
+            "applied_profile_diff": parsed.get("profile_diff"),
+            "created_at": _now(),
+        })
+
+    content_store.save(config.USER_PROFILE, profile)
+    content_store.save(config.USER_NOTES, notes)
+    content_store.save(config.FEEDBACK_LOG, feedback_log)
+    log.info("답장 %d건 반영 완료", len(replies))
+    return profile, notes
+
+
+def _print_picks(picks: list[dict], by_id: dict, candidates: list[dict]) -> None:
+    similarity = {c["id"]: c.get("similarity") for c in candidates}
+    for pick in picks:
+        video = by_id.get(pick["video_id"], {})
+        mark = "강추" if pick["tier"] == "strong" else "혹시나"
+        log.info("[%s] %s (유사도 %.3f, 난이도 %s)",
+                 mark, video.get("title", "?")[:55],
+                 similarity.get(pick["video_id"]) or 0.0, video.get("difficulty", "?"))
+        log.info("       %s", pick["reason_text"])
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="추천 산출 및 뉴스레터 발송")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="발송/이력 저장 없이 추천 결과만 출력 (Gmail 설정 불필요)")
+    args = parser.parse_args()
+    main(dry_run=args.dry_run)

@@ -5,6 +5,11 @@ on:
     # 월/수/금 KST 08:00 (UTC 23:00 일/화/목)
     - cron: "0 23 * * 0,2,4"
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "발송 없이 추천 결과만 출력 (Gmail 설정 불필요)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -34,7 +39,7 @@ jobs:
           GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
           GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
           RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
-        run: python -m src.run_send
+        run: python -m src.run_send ${{ inputs.dry_run && '--dry-run' || '' }}
 
       - name: Commit state
         run: |
