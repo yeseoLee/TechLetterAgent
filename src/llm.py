@@ -38,8 +38,16 @@ def client() -> OpenAI:
 
 
 def complete(prompt: str, *, model: str, system: str | None = None,
-             max_tokens: int = 4096, temperature: float = 0.3) -> str:
-    """단일 턴 텍스트 생성. 429/일시적 오류는 지수 백오프로 재시도한다."""
+             max_tokens: int = config.TOKENS_ANALYZE, temperature: float = 0.3,
+             json_mode: bool = False) -> str:
+    """단일 턴 텍스트 생성. 429/5xx 와 일시적 오류는 지수 백오프로 재시도한다.
+
+    reasoning 모델에서는 max_tokens 에 추론 토큰이 포함된다. 짜게 잡으면 추론만
+    하다 예산이 끝나 content 가 빈 채로 돌아오므로 넉넉히 준다.
+
+    json_mode 는 response_format 으로 답변 채널을 강제한다. 받지 않는
+    프로바이더가 있어 400 이면 끄고 재시도한다.
+    """
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
