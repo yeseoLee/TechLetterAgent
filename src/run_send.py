@@ -92,9 +92,13 @@ def _apply_feedback(profile: dict, notes: list[dict]) -> tuple[dict, list[dict]]
 
     history = content_store.load(config.RECOMMENDATIONS, []) or []
     last_sent = max((r.get("sent_at", "") for r in history), default="")
+    known_ids = {r.get("gmail_message_id") for r in history if r.get("gmail_message_id")}
+
+    feedback_log = content_store.load(config.FEEDBACK_LOG, []) or []
+    seen = {f.get("message_id") for f in feedback_log if f.get("message_id")}
 
     try:
-        replies = email_client.fetch_replies_since(last_sent)
+        replies = email_client.fetch_replies_since(last_sent, known_ids, seen)
     except Exception as exc:
         log.warning("답장 조회 실패, 이번 회차는 건너뜁니다: %s", exc)
         return profile, notes
@@ -103,7 +107,6 @@ def _apply_feedback(profile: dict, notes: list[dict]) -> tuple[dict, list[dict]]
         log.info("새 답장 없음")
         return profile, notes
 
-    feedback_log = content_store.load(config.FEEDBACK_LOG, []) or []
     for reply in replies:
         parsed = feedback_agent.parse_reply(reply, profile)
         profile = memory_agent.apply_diff(profile, parsed.get("profile_diff"))
@@ -111,6 +114,7 @@ def _apply_feedback(profile: dict, notes: list[dict]) -> tuple[dict, list[dict]]
             notes = memory_agent.add_note(notes, note_text, parsed.get("recommendation_id"))
         feedback_log.append({
             "id": content_store.next_id(feedback_log, "fb"),
+            "message_id": reply.get("message_id"),
             "recommendation_id": parsed.get("recommendation_id"),
             "type": parsed.get("type", "reply_text"),
             "raw_text": reply.get("body", ""),

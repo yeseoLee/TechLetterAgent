@@ -63,11 +63,12 @@ N_MAYBE = 2
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
-RECIPIENT_EMAIL = os.environ.get("RECIPIENT_EMAIL")
+# 수신 주소. 지정하지 않으면 발송 계정 자신에게 보낸다.
+RECIPIENT_EMAIL = os.environ.get("RECIPIENT_EMAIL") or os.environ.get("GMAIL_ADDRESS")
 
-GMAIL_CLIENT_ID = os.environ.get("GMAIL_CLIENT_ID")
-GMAIL_CLIENT_SECRET = os.environ.get("GMAIL_CLIENT_SECRET")
-GMAIL_REFRESH_TOKEN = os.environ.get("GMAIL_REFRESH_TOKEN")
+# 앱 비밀번호 방식. OAuth 동의 화면/심사/토큰 만료가 없고 secret 이 2개로 끝난다.
+GMAIL_ADDRESS = os.environ.get("GMAIL_ADDRESS")
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 
 # OpenRouter 랭킹 페이지에 노출되는 선택 헤더.
 OPENROUTER_REFERER = "https://github.com/yeseoLee/TechLetterAgent"

@@ -5,7 +5,7 @@
 - 사용자: 1인 (개인용)
 - 실행: GitHub Actions cron — 상시 서버 없음
 - 상태 저장: 레포 안 `data/*.json` (외부 DB 없음)
-- 이메일: Gmail API (발송 + 답장 수신 모두)
+- 이메일: 본인 Gmail 계정에 앱 비밀번호로 SMTP/IMAP 접속
 
 ## 동작 방식
 
@@ -15,11 +15,11 @@ collect.yml (매일)
   → OpenRouter 무료 모델로 요약/난이도/타겟대상 생성 → 임베딩 → data/videos.json 커밋
 
 send.yml (월/수/금)
-  1. Gmail 답장 조회 → LLM 파싱 → 프로필/메모 갱신
+  1. IMAP 답장 조회 → LLM 파싱 → 프로필/메모 갱신
   2. 프로필 임베딩 vs 영상 임베딩 코사인 유사도 → 후보 Top-30 (기추천 영상 제외)
   3. reasoning 모델 재검토 → 강추 3개 + 혹시나 2개 확정 + 추천 이유 생성
   4. 이메일 포맷팅 (제목 + 1~2줄 요약 + 추천 이유 + 👍/👎 mailto)
-  5. Gmail API 발송 → data/recommendations.json 커밋
+  5. SMTP 발송 → data/recommendations.json 커밋
 ```
 
 피드백 루프는 **답장 기반**입니다. 오픈/클릭 트래킹은 상시 응답 서버가 필요해 1차 범위에서 제외했습니다.
@@ -84,26 +84,17 @@ python scripts/resolve_channel_id.py https://www.youtube.com/@naver_d2
 무료 quota 는 하루 10,000 units 입니다. 이 프로젝트는 소스 8개 기준 하루 20 units
 내외를 쓰므로 여유가 큽니다.
 
-### 4. Gmail OAuth 설정
+### 4. Gmail 앱 비밀번호
 
-1. [Google Cloud Console](https://console.cloud.google.com/) 에서 프로젝트 생성
-2. **API 및 서비스 → 라이브러리** 에서 *Gmail API* 사용 설정
-3. **OAuth 동의 화면** 구성 — User Type `외부`, 테스트 사용자에 본인 Gmail 주소 추가
-   (게시하지 않고 테스트 모드로 두면 refresh token 이 7일마다 만료되므로, **앱을 "프로덕션"으로 게시**하세요. 개인 용도라 심사 없이 게시 가능합니다.)
-4. **사용자 인증 정보 → OAuth 클라이언트 ID** 생성 후 JSON 을 레포 루트에 `credentials.json` 으로 저장
+Gmail API(OAuth) 대신 앱 비밀번호로 SMTP/IMAP 에 접속합니다. 사용자가 한 명이라
+OAuth 동의 화면, 심사, refresh token 7일 만료를 감수할 이유가 없습니다.
 
-   애플리케이션 유형은 반드시 **데스크톱 앱** 이어야 합니다. 웹 애플리케이션으로 만들면
-   `Access blocked: This app's request is invalid` 로 막힙니다 — 인증 스크립트가
-   `http://localhost:<포트>/` 로 콜백을 받는데 웹 클라이언트에는 그 리디렉션 URI 가
-   등록돼 있지 않기 때문입니다. (`scripts/gmail_oauth_setup.py` 가 실행 전에 검사합니다.)
-5. 로컬에서 1회 인증:
+1. 계정에 **2단계 인증**이 켜져 있어야 합니다
+2. [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) 에서
+   앱 이름을 적고 생성 → 16자리 비밀번호 복사
+3. `GMAIL_ADDRESS`(발송 계정 주소)와 `GMAIL_APP_PASSWORD` 를 secret 에 등록
 
-```bash
-pip install -r requirements.txt
-python scripts/gmail_oauth_setup.py
-```
-
-출력된 세 값을 GitHub Secrets 에 등록합니다.
+앱 비밀번호는 만료되지 않습니다. 폐기하려면 같은 페이지에서 삭제하면 됩니다.
 
 ### 5. GitHub Secrets
 
@@ -111,10 +102,9 @@ python scripts/gmail_oauth_setup.py
 | --- | --- |
 | `OPENROUTER_API_KEY` | LLM 호출과 임베딩 전부. [openrouter.ai/keys](https://openrouter.ai/keys) 에서 발급 |
 | `YOUTUBE_API_KEY` | YouTube Data API v3. 영상 발견 + 길이 + 설명 |
-| `GMAIL_CLIENT_ID` | Gmail OAuth |
-| `GMAIL_CLIENT_SECRET` | Gmail OAuth |
-| `GMAIL_REFRESH_TOKEN` | Gmail OAuth |
-| `RECIPIENT_EMAIL` | 뉴스레터 수신 주소 (공개 레포이므로 Secret 으로 관리) |
+| `GMAIL_ADDRESS` | 발송에 쓸 Gmail 주소 |
+| `GMAIL_APP_PASSWORD` | 앱 비밀번호 16자리 |
+| `RECIPIENT_EMAIL` | 뉴스레터 수신 주소. 생략하면 `GMAIL_ADDRESS` 로 보냅니다 |
 
 레포 Settings → Secrets and variables → Actions 에서 등록합니다.
 
@@ -156,7 +146,7 @@ python -m pytest tests/ -q
 | `src/cluster_agent.py` | 코사인 유사도 Top-30 후보 추출 |
 | `src/recommendation_agent.py` | Sonnet 5 재검토 → 강추 3 / 혹시나 2 |
 | `src/newsletter_agent.py` | 이메일 본문 포맷팅 (mailto 피드백 버튼 포함) |
-| `src/email_client.py` | Gmail API 발송/답장 조회 |
+| `src/email_client.py` | SMTP 발송 / IMAP 답장 조회 |
 | `src/feedback_agent.py` | 답장 파싱 → 프로필 diff 제안 |
 | `src/memory_agent.py` | 프로필/메모 갱신 |
 
