@@ -149,4 +149,4 @@ def test_no_signal_section_when_empty(monkeypatch):
 
     monkeypatch.setattr(ra.llm, "complete_json", fake)
     ra.recommend({}, [], CANDIDATES, {"liked": [], "disliked": []})
-    assert "지난 추천에 대한 반응" not in captured["prompt"]
+    assert "추천에 대한 반응" not in captured["prompt"]

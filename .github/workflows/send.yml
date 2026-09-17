@@ -43,6 +43,7 @@ jobs:
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+          RECIPIENT_EMAILS: ${{ secrets.RECIPIENT_EMAILS }}
           FEEDBACK_ADDRESS: ${{ secrets.FEEDBACK_ADDRESS }}
         run: |
           python -m src.run_send \

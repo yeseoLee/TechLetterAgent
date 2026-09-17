@@ -178,6 +178,7 @@ IMAP 은 `TO "…+techletter@gmail.com"` 으로 검색해 다른 메일을 건�
 | `GMAIL_ADDRESS` | 발송 계정 |
 | `GMAIL_APP_PASSWORD` | 앱 비밀번호 16자리 |
 | `FEEDBACK_ADDRESS` | 답장 받을 플러스 주소 (선택이지만 권장) |
+| `RECIPIENT_EMAILS` | 수신자 목록, 쉼표 구분·최대 10명. 답장은 `From` 주소로 유저를 구분. 없으면 `RECIPIENT_EMAIL` → `GMAIL_ADDRESS` |
 
 ### 6. 워크플로우 쓰기 권한
 
@@ -246,7 +247,7 @@ python -m pytest tests/ -q
 | `src/newsletter_agent.py` | HTML·플레인텍스트 렌더링, 피드백 링크 |
 | `src/email_client.py` | SMTP 발송, IMAP 답장 조회 |
 | `src/feedback_agent.py` | 답장 → 프로필 diff + 메모 |
-| `src/memory_agent.py` | diff·메모·채널 승인 반영 |
+| `src/memory_agent.py` | diff·메모·채널 승인 반영, 장기 기억 갱신 |
 | `src/llm.py` | OpenRouter 래퍼 — 재시도, JSON 파싱 |
 | `src/content_store.py` · `embedding_store.py` | `data/*.json` 영속화 |
 
@@ -256,11 +257,22 @@ python -m pytest tests/ -q
 | --- | --- |
 | `videos.json` | 메타데이터 + 생성된 요약·난이도·대상·주제 |
 | `embeddings.json` | `video_id` → float32 base64 |
+
+유저별 파일은 `data/users/<sha256(email) 앞 12자>/` 아래에 있습니다.
+
+| 파일 | 내용 |
+| --- | --- |
 | `user_profile.json` | 구조화 프로필 |
 | `user_notes.json` | 답장에서 뽑은 자유 텍스트 메모 |
 | `recommendations.json` | 추천 이력이자 중복 방지 장치 |
 | `feedback_log.json` | 모든 답장과 그로 인한 diff |
+| `long_term_memory.json` | 지금까지의 피드백을 요약한 장기 기억 (선호·기피·상황) |
 | `discoveries.json` | 채널 제안과 응답 |
+
+LLM 에는 **장기 기억 + 최근 `SHORT_TERM_N` 개의 메모·좋아요/싫어요(단기 기억)** 가
+들어갑니다. 새 피드백이 쌓일 때마다 장기 기억을 갱신하고, 커서(`last_feedback_id`)가
+있어 갱신이 실패하면 다음 실행에서 다시 시도합니다. 단일 유저 시절의 `data/*.json` 은
+첫 실행 때 `RECIPIENT_EMAILS` 첫 번째 유저 디렉터리로 옮겨집니다.
 
 ---
 

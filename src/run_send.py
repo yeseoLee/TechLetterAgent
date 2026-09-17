@@ -1,7 +1,11 @@
 """send.yml 진입점.
 
+config.RECIPIENT_EMAILS 의 유저마다 아래를 순서대로 돈다. 영상·임베딩·채널은 공통이고
+프로필·메모·피드백·추천 이력·장기 기억은 data/users/<user_key>/ 에 유저별로 둔다.
+한 유저가 실패해도 다음 유저는 계속 처리한다.
+
 순서:
-  1) Gmail 답장 확인 → 프로필/메모 반영
+  1) Gmail 답장 확인 → 프로필/메모 반영 → 장기 기억 갱신
   2) 임베딩 유사도로 후보 Top-30 (기추천 제외)
   3) 추천 3편 확정 (유사도 상위 2편 + LLM 이 고른 넓혀보기 1편)
   3-1) 새 채널 후보 탐색
@@ -29,14 +33,41 @@ def _now() -> str:
 def main(dry_run: bool = False, feedback_only: bool = False) -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
+    emails = config.RECIPIENT_EMAILS
+    if not emails:
+        log.error("RECIPIENT_EMAILS 가 비어 있습니다.")
+        return
+    if len(emails) > config.MAX_USERS:
+        log.warning("수신자 %d명 중 앞의 %d명만 처리합니다.", len(emails), config.MAX_USERS)
+        emails = emails[:config.MAX_USERS]
+
+    memory_agent.migrate_legacy_data(emails[0])
+    videos = content_store.load(config.VIDEOS, []) or []
+
+    failed = 0
+    for email in emails:
+        config.set_user(email)
+        log.info("===== 유저 %s (%s) =====", _mask(email), config.USER_DIR.name)
+        try:
+            run_user(videos, dry_run, feedback_only)
+        except Exception:
+            failed += 1
+            log.exception("유저 %s 처리 실패, 다음 유저로 넘어갑니다", _mask(email))
+    if failed:
+        raise SystemExit(f"{failed}/{len(emails)}명 처리 실패")
+
+
+def run_user(videos: list[dict], dry_run: bool = False, feedback_only: bool = False) -> None:
+    """현재 config.set_user() 로 지정된 유저 한 명을 처리한다."""
     profile = memory_agent.bootstrap_profile()
     notes = content_store.load(config.USER_NOTES, []) or []
-    videos = content_store.load(config.VIDEOS, []) or []
+    by_id = {v["id"]: v for v in videos}
 
     # 답장만 읽어 프로필에 반영하고 끝낸다. 발송 없이 피드백 루프만 확인할 때 쓴다.
     if feedback_only:
         before = dict(profile)
         profile, notes = _apply_feedback(profile, notes)
+        _consolidate_memory(by_id)
         if profile != before:
             log.info("프로필 변경: %s", _diff_summary(before, profile))
         else:
@@ -47,22 +78,25 @@ def main(dry_run: bool = False, feedback_only: bool = False) -> None:
         log.error("분석된 영상이 없습니다. 먼저 collect 를 돌리세요.")
         return
 
-    # 1) 지난 발송 이후의 답장을 반영한다.
+    # 1) 지난 발송 이후의 답장을 반영하고, 새 피드백을 장기 기억에 녹인다.
     if not dry_run:
         profile, notes = _apply_feedback(profile, notes)
+        memory = _consolidate_memory(by_id)
+    else:
+        memory = content_store.load(config.LONG_TERM_MEMORY, {}) or {}
 
     # 2) 후보 Top-K.
     candidates = cluster_agent.top_candidates(
         profile, notes, videos,
         exclude=cluster_agent.already_recommended(),
         k=config.TOP_K_CANDIDATES,
+        memory=memory,
     )
     if not candidates:
         log.error("추천할 후보가 없습니다.")
         return
 
-    # 3) LLM 재검토. 지난 좋아요/싫어요를 함께 넘겨 루프를 닫는다.
-    by_id = {v["id"]: v for v in videos}
+    # 3) LLM 재검토. 장기 기억 + 최근 좋아요/싫어요(단기 기억)를 함께 넘겨 루프를 닫는다.
     signals = recommendation_agent.collect_signals(
         content_store.load(config.FEEDBACK_LOG, []) or [],
         content_store.load(config.RECOMMENDATIONS, []) or [],
@@ -71,7 +105,7 @@ def main(dry_run: bool = False, feedback_only: bool = False) -> None:
     if signals["liked"] or signals["disliked"]:
         log.info("반영할 반응: 좋아요 %d건, 싫어요 %d건",
                  len(signals["liked"]), len(signals["disliked"]))
-    picks = recommendation_agent.recommend(profile, notes, candidates, signals)
+    picks = recommendation_agent.recommend(profile, notes, candidates, signals, memory=memory)
 
     # 주간 신규 채널 제안. 실패해도 뉴스레터 발송은 막지 않는다.
     proposal = None
@@ -138,7 +172,7 @@ def _apply_feedback(profile: dict, notes: list[dict]) -> tuple[dict, list[dict]]
 
     try:
         replies = email_client.fetch_replies_since(
-            last_sent, known_ids, seen, config.FEEDBACK_ADDRESS)
+            last_sent, known_ids, seen, config.FEEDBACK_ADDRESS, config.RECIPIENT_EMAIL)
     except Exception as exc:
         log.warning("답장 조회 실패, 이번 회차는 건너뜁니다: %s", exc)
         return profile, notes
@@ -172,6 +206,26 @@ def _apply_feedback(profile: dict, notes: list[dict]) -> tuple[dict, list[dict]]
     content_store.save(config.FEEDBACK_LOG, feedback_log)
     log.info("답장 %d건 반영 완료", len(replies))
     return profile, notes
+
+
+def _consolidate_memory(by_id: dict) -> dict:
+    """장기 기억에 아직 안 들어간 피드백이 있으면 반영하고 저장한다."""
+    memory = content_store.load(config.LONG_TERM_MEMORY, {}) or {}
+    updated = memory_agent.update_long_term(
+        memory,
+        content_store.load(config.FEEDBACK_LOG, []) or [],
+        content_store.load(config.RECOMMENDATIONS, []) or [],
+        by_id,
+    )
+    if updated != memory:
+        content_store.save(config.LONG_TERM_MEMORY, updated)
+    return updated
+
+
+def _mask(email: str) -> str:
+    """Actions 로그가 공개될 수 있어 주소를 가린다."""
+    local, _, domain = email.partition("@")
+    return f"{local[:2]}***@{domain}"
 
 
 def _diff_summary(before: dict, after: dict) -> str:

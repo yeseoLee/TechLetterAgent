@@ -1,6 +1,6 @@
 """이메일 송수신 — 본인 Gmail 계정에 앱 비밀번호로 SMTP/IMAP 접속한다.
 
-Gmail API(OAuth) 대신 이 방식을 쓰는 이유: 사용자가 한 명이라 OAuth 동의 화면,
+Gmail API(OAuth) 대신 이 방식을 쓰는 이유: 발송 계정이 하나라 OAuth 동의 화면,
 심사, refresh token 7일 만료를 감수할 이유가 없다. 앱 비밀번호는 secret 하나로
 끝나고 만료되지 않으며, 표준 라이브러리만 쓴다.
 
@@ -74,11 +74,15 @@ def send(subject: str, html_body: str, text_body: str, to_addr: str | None = Non
 
 def fetch_replies_since(since_iso: str = "", known_message_ids: set[str] | None = None,
                         seen_reply_ids: set[str] | None = None,
-                        feedback_address: str | None = None) -> list[dict]:
+                        feedback_address: str | None = None,
+                        sender: str | None = None) -> list[dict]:
     """지난 발송 이후 도착한 답장을 가져온다.
 
     feedback_address 가 플러스 주소면 그 주소로 온 것만 본다. 일상 메일과 섞인
     받은편지함에서 이 봇 앞으로 온 답장만 정확히 골라낼 수 있다.
+
+    sender 는 답장한 유저의 주소다. 모든 유저가 같은 피드백 주소로 답장하므로
+    From 으로 누구의 피드백인지 가른다. 없으면 발송 계정 자신.
 
     반환: [{message_id, subject, body, received_at, in_reply_to}, ...]
     """
@@ -94,11 +98,10 @@ def fetch_replies_since(since_iso: str = "", known_message_ids: set[str] | None 
         imap.login(address, password)
         imap.select("INBOX", readonly=True)
 
-        # 플러스 주소가 있으면 그쪽으로 온 것만, 없으면 본인 발신 메일로 좁힌다.
+        # 이 유저가 보낸 것만. 플러스 주소가 있으면 그쪽으로 온 것으로 더 좁힌다.
+        criteria = ("FROM", f'"{sender or address}"', "SINCE", since)
         if "+" in feedback_address:
-            criteria = ("TO", f'"{feedback_address}"', "SINCE", since)
-        else:
-            criteria = ("FROM", f'"{address}"', "SINCE", since)
+            criteria = ("TO", f'"{feedback_address}"', *criteria)
         log.info("IMAP 검색: %s", " ".join(criteria))
         status, data = imap.search(None, *criteria)
         if status != "OK":

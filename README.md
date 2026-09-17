@@ -185,6 +185,7 @@ To also separate it in the UI, add a Gmail filter on that recipient — but leav
 | `GMAIL_ADDRESS` | Sending account |
 | `GMAIL_APP_PASSWORD` | 16-character app password |
 | `FEEDBACK_ADDRESS` | Plus address for replies (optional but recommended) |
+| `RECIPIENT_EMAILS` | Comma-separated recipients, up to 10. Replies are matched to a user by `From`. Falls back to `RECIPIENT_EMAIL`, then `GMAIL_ADDRESS` |
 
 ### 6. Workflow write permission
 
@@ -254,7 +255,7 @@ same channel is never proposed twice.
 | `src/newsletter_agent.py` | HTML and plain-text rendering, feedback links |
 | `src/email_client.py` | SMTP send, IMAP reply fetch |
 | `src/feedback_agent.py` | Reply → profile diff + note |
-| `src/memory_agent.py` | Applies diffs, notes, channel approvals |
+| `src/memory_agent.py` | Applies diffs, notes, channel approvals; updates long-term memory |
 | `src/llm.py` | OpenRouter wrapper — retries, JSON parsing |
 | `src/content_store.py` · `embedding_store.py` | `data/*.json` persistence |
 
@@ -264,11 +265,22 @@ same channel is never proposed twice.
 | --- | --- |
 | `videos.json` | Metadata plus generated summary, difficulty, audience, topics |
 | `embeddings.json` | `video_id` → float32 base64 |
+
+Per user, under `data/users/<sha256(email)[:12]>/`:
+
+| File | Contents |
+| --- | --- |
 | `user_profile.json` | Structured profile |
 | `user_notes.json` | Free-text notes extracted from replies |
 | `recommendations.json` | History, which is also the duplicate guard |
 | `feedback_log.json` | Every reply, with the diff it produced |
+| `long_term_memory.json` | Preferences / avoid / context distilled from all feedback so far |
 | `discoveries.json` | Channel proposals and answers |
+
+Prompts get **long-term memory + the latest `SHORT_TERM_N` notes and likes/dislikes**.
+Every new feedback entry is folded into long-term memory; a cursor (`last_feedback_id`)
+makes a failed update retry on the next run. Legacy single-user `data/*.json` files are
+moved into the first recipient's directory on the first run.
 
 ---
 

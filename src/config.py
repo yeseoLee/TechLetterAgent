@@ -1,4 +1,5 @@
 """공통 설정: 경로, 환경변수, 모델 ID."""
+import hashlib
 import os
 from pathlib import Path
 
@@ -6,13 +7,28 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 CONFIG_DIR = ROOT / "config"
 
-USER_PROFILE = DATA_DIR / "user_profile.json"
-USER_NOTES = DATA_DIR / "user_notes.json"
+# 전 유저 공통: 영상 메타데이터와 임베딩.
 VIDEOS = DATA_DIR / "videos.json"
 EMBEDDINGS = DATA_DIR / "embeddings.json"  # video_id -> float32 base64
-DISCOVERIES = DATA_DIR / "discoveries.json"  # 주간 채널 탐색 제안과 응답
+
+# 유저별 상태는 data/users/<user_key>/ 아래에 둔다. 아래 경로는 set_user() 가
+# 현재 처리 중인 유저 것으로 바꿔 끼운다. 실행은 유저 단위로 순차 진행된다.
+USERS_DIR = DATA_DIR / "users"
+USER_FILES = {
+    "USER_PROFILE": "user_profile.json",
+    "USER_NOTES": "user_notes.json",
+    "RECOMMENDATIONS": "recommendations.json",
+    "FEEDBACK_LOG": "feedback_log.json",
+    "DISCOVERIES": "discoveries.json",        # 주간 채널 탐색 제안과 응답
+    "LONG_TERM_MEMORY": "long_term_memory.json",  # 피드백을 누적 요약한 장기 기억
+}
+USER_DIR = DATA_DIR
+USER_PROFILE = DATA_DIR / "user_profile.json"
+USER_NOTES = DATA_DIR / "user_notes.json"
 RECOMMENDATIONS = DATA_DIR / "recommendations.json"
 FEEDBACK_LOG = DATA_DIR / "feedback_log.json"
+DISCOVERIES = DATA_DIR / "discoveries.json"
+LONG_TERM_MEMORY = DATA_DIR / "long_term_memory.json"
 
 SEED_PROFILE = CONFIG_DIR / "seed_profile.json"
 CHANNELS = CONFIG_DIR / "channels.json"
@@ -42,6 +58,14 @@ LLM_TIMEOUT_SECONDS = 120
 TOKENS_FILTER = 4000        # 발표 여부 yes/no 판정
 TOKENS_ANALYZE = 8000       # 요약·난이도·대상·주제 생성
 TOKENS_RECOMMEND = 16000    # 후보 30개 재검토
+
+TOKENS_MEMORY = 8000        # 장기 기억 갱신
+
+# 추천 프롬프트·프로필 임베딩에 넣는 단기 기억 크기: 최근 메모 n개, 최근 좋아요/싫어요 n개.
+# 그보다 오래된 피드백은 장기 기억(long_term_memory.json)에 요약돼 들어간다.
+SHORT_TERM_N = 5
+# 장기 기억 항목별 최대 개수. 무한히 자라면 프롬프트가 커지고 최신 취향이 묻힌다.
+LONG_TERM_MAX_ITEMS = 10
 
 # 주 1회 실행에서 새로 분석할 영상 수 목표.
 MAX_ANALYSIS_PER_RUN = 10
@@ -85,18 +109,48 @@ FAR_POOL_SIZE = 15
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
-# 수신 주소. 지정하지 않으면 발송 계정 자신에게 보낸다.
-RECIPIENT_EMAIL = os.environ.get("RECIPIENT_EMAIL") or os.environ.get("GMAIL_ADDRESS")
+# 수신자 목록. RECIPIENT_EMAILS 에 쉼표로 여러 개(최대 MAX_USERS). 없으면 예전
+# 단일 변수 RECIPIENT_EMAIL, 그것도 없으면 발송 계정 자신에게 보낸다.
+MAX_USERS = 10
+RECIPIENT_EMAILS = [
+    e.strip().lower()
+    for e in (os.environ.get("RECIPIENT_EMAILS") or os.environ.get("RECIPIENT_EMAIL")
+              or os.environ.get("GMAIL_ADDRESS") or "").split(",")
+    if e.strip()
+]
+# 현재 처리 중인 유저의 수신 주소. set_user() 가 채운다.
+RECIPIENT_EMAIL = RECIPIENT_EMAILS[0] if RECIPIENT_EMAILS else None
 
 # 피드백을 받을 주소. Gmail 플러스 주소(you+techletter@gmail.com)를 쓰면 일상
 # 메일과 섞이지 않고, IMAP 에서 이 주소로 정확히 필터링할 수 있다.
 # Reply-To 헤더와 mailto 링크에 이 주소를 넣어야 답장이 태그를 달고 돌아온다
 # (그냥 To 에만 넣으면 답장 시 To 가 발신 주소로 바뀌면서 태그가 사라진다).
-FEEDBACK_ADDRESS = os.environ.get("FEEDBACK_ADDRESS") or RECIPIENT_EMAIL
+# 모든 유저가 같은 피드백 주소로 답장하고, 답장의 From 으로 유저를 구분한다.
+FEEDBACK_ADDRESS = os.environ.get("FEEDBACK_ADDRESS") or os.environ.get("GMAIL_ADDRESS") or RECIPIENT_EMAIL
 
 # 앱 비밀번호 방식. OAuth 동의 화면/심사/토큰 만료가 없고 secret 이 2개로 끝난다.
 GMAIL_ADDRESS = os.environ.get("GMAIL_ADDRESS")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
+
+
+def user_key(email: str) -> str:
+    """유저 디렉터리 이름. 레포가 공개일 수 있어 이메일 원문 대신 해시를 쓴다."""
+    return hashlib.sha256(email.strip().lower().encode()).hexdigest()[:12]
+
+
+def set_user(email: str) -> None:
+    """유저별 경로 상수를 이 유저 것으로 바꿔 끼운다.
+
+    각 모듈이 config.USER_PROFILE 등을 호출 시점에 읽으므로, 이 한 번으로
+    기존 코드가 그대로 유저 단위로 동작한다.
+    # ponytail: 모듈 전역 교체라 유저 병렬 처리는 불가. 필요해지면 경로를 인자로 넘길 것.
+    """
+    global USER_DIR, RECIPIENT_EMAIL
+    RECIPIENT_EMAIL = email
+    USER_DIR = USERS_DIR / user_key(email)
+    for name, filename in USER_FILES.items():
+        globals()[name] = USER_DIR / filename
+
 
 # OpenRouter 랭킹 페이지에 노출되는 선택 헤더.
 OPENROUTER_REFERER = "https://github.com/yeseoLee/TechLetterAgent"

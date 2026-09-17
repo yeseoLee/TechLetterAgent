@@ -33,8 +33,10 @@ _SYSTEM = """당신은 개발자 한 명을 위한 영상 큐레이터입니다.
    것을 고르고 그렇게 말하세요.
 
 이유는 한국어 2문장 이내로, 프로필의 어떤 점과 연결되는지 구체적으로 쓰세요.
-프로필의 구조화 필드와 메모가 충돌하면 메모를 우선하세요. 메모가 더 최신이고 구체적입니다.
-지난 추천에 대한 반응(좋아요/싫어요)이 주어지면 가장 강한 신호로 취급하세요.
+장기 기억은 지금까지의 피드백을 요약한 것이고, 최근 메모와 반응은 가장 최신 피드백 원문입니다.
+프로필 구조화 필드 < 장기 기억 < 최근 메모 순으로 우선하세요. 뒤로 갈수록 최신이고 구체적입니다.
+최근 추천에 대한 반응(좋아요/싫어요)이 주어지면 가장 강한 신호로 취급하세요.
+장기 기억의 avoid 에 해당하는 영상은 넓혀보기로도 고르지 마세요.
 
 아래 JSON 형식으로만 답하세요.
 {{
@@ -44,8 +46,9 @@ _SYSTEM = """당신은 개발자 한 명을 위한 영상 큐레이터입니다.
 
 
 def collect_signals(feedback_log: list[dict], recommendations: list[dict],
-                    videos_by_id: dict[str, dict], limit: int = 8) -> dict[str, list[str]]:
-    """좋아요/싫어요한 영상 제목을 모은다.
+                    videos_by_id: dict[str, dict],
+                    limit: int = config.SHORT_TERM_N) -> dict[str, list[str]]:
+    """최근 좋아요/싫어요한 영상 제목을 모은다 (단기 기억). 오래된 것은 장기 기억이 맡는다.
 
     피드백을 기록만 하고 쓰지 않으면 루프가 닫히지 않는다. "이 발표가 좋았다" 는
     프로필 필드로 표현할 수 없어서 제목을 그대로 넘긴다.
@@ -81,7 +84,8 @@ def split_pools(candidates: list[dict], n_near: int = config.N_NEAR
 
 def recommend(profile: dict, notes: list[dict], candidates: list[dict],
               signals: dict | None = None,
-              n_near: int = config.N_NEAR, n_far: int = config.N_FAR) -> list[dict]:
+              n_near: int = config.N_NEAR, n_far: int = config.N_FAR,
+              memory: dict | None = None) -> list[dict]:
     """반환: [{video_id, tier, reason_text}, ...]. tier 는 "near" | "far"."""
     if not candidates:
         return []
@@ -93,8 +97,10 @@ def recommend(profile: dict, notes: list[dict], candidates: list[dict],
              far_pool[0]["similarity"] if far_pool else 0)
 
     blocks = [f"=== 프로필 ===\n{_format_profile(profile, notes)}"]
+    if memory_text := _format_memory(memory or {}):
+        blocks.append(f"=== 장기 기억 ===\n{memory_text}")
     if signal_text := _format_signals(signals or {}):
-        blocks.append(f"=== 지난 추천에 대한 반응 ===\n{signal_text}")
+        blocks.append(f"=== 최근 추천에 대한 반응 ===\n{signal_text}")
     blocks.append(f"=== 확실한 추천 (이유만 쓸 것) ===\n{_format_candidates(near)}")
     if far_pool:
         blocks.append(f"=== 넓혀볼 후보 (여기서 {n_far}개 고를 것) ===\n"
@@ -157,6 +163,12 @@ def _format_signals(signals: dict) -> str:
     return "\n".join(lines)
 
 
+def _format_memory(memory: dict) -> str:
+    labels = {"preferences": "꾸준한 선호", "avoid": "피할 것", "context": "상황"}
+    return "\n".join(f"{label}:\n" + "\n".join(f"  - {item}" for item in memory[field])
+                     for field, label in labels.items() if memory.get(field))
+
+
 def _format_profile(profile: dict, notes: list[dict]) -> str:
     lines = [
         f"포지션: {profile.get('position', '')}",
@@ -165,9 +177,9 @@ def _format_profile(profile: dict, notes: list[dict]) -> str:
         f"연차: {profile.get('level', '')}",
         f"언어: {', '.join(profile.get('language') or [])}",
     ]
-    if notes:
-        lines.append("\n메모 (본인이 답장으로 남긴 것, 오래된 것부터):")
-        lines += [f"  - {n['text']}" for n in notes if n.get("text")]
+    if recent := [n for n in notes[-config.SHORT_TERM_N:] if n.get("text")]:
+        lines.append("\n최근 메모 (본인이 답장으로 남긴 것, 오래된 것부터):")
+        lines += [f"  - {n['text']}" for n in recent]
     return "\n".join(lines)
 
 

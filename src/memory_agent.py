@@ -1,12 +1,17 @@
-"""Memory Agent — 프로필과 메모의 영속화를 담당한다.
+"""Memory Agent — 프로필·메모·장기 기억의 영속화를 담당한다.
 
 feedback_agent 가 제안한 diff 를 user_profile.json / user_notes.json 에 반영하고,
 최초 실행 시 config/seed_profile.json 으로 프로필을 초기화한다.
+
+기억은 두 층이다.
+  단기 기억 — feedback_log / user_notes 의 최근 n개 (config.SHORT_TERM_N). 원문 그대로.
+  장기 기억 — long_term_memory.json. 새 피드백이 쌓일 때마다 LLM 이 기존 장기 기억에
+             새 피드백을 녹여 다시 쓴다. 로그가 길어져도 크기가 일정하다.
 """
 import logging
 from datetime import datetime, timezone
 
-from . import config, content_store
+from . import config, content_store, llm
 
 log = logging.getLogger(__name__)
 
@@ -123,3 +128,97 @@ def apply_channel_answer(channel_id: str, approved: bool) -> bool:
     content_store.save(config.CHANNELS, sources)
     log.info("채널 추가: %s (%s)", proposal.get("name", ""), channel_id)
     return True
+
+
+# --- 장기 기억 -----------------------------------------------------------
+
+MEMORY_FIELDS = ("preferences", "avoid", "context")
+
+_MEMORY_SYSTEM = """당신은 개발자 뉴스레터 구독자 한 명의 장기 기억을 관리합니다.
+기존 장기 기억과 새로 들어온 피드백을 읽고, 갱신된 장기 기억 전체를 돌려주세요.
+
+- preferences: 꾸준히 원하는 주제·발표 스타일 (예: "실무 사례 중심의 LLM 평가 발표")
+- avoid: 피하고 싶어하는 주제·스타일
+- context: 추천에 영향을 주는 본인 상황 (예: "이직 준비 중", "팀에서 k8s 도입 예정")
+
+규칙:
+- 한 번의 반응을 일반화하지 말고, 반복되거나 본인이 명시한 것만 남기세요.
+- 새 피드백이 기존 항목과 충돌하면 새 피드백을 따르세요.
+- 비슷한 항목은 합치고, 각 목록은 {max_items}개 이하의 짧은 한국어 문장으로 유지하세요.
+
+아래 JSON 형식으로만 답하세요.
+{{"preferences": ["..."], "avoid": ["..."], "context": ["..."]}}"""
+
+
+def pending_feedback(feedback_log: list[dict], memory: dict) -> list[dict]:
+    """장기 기억에 아직 반영되지 않은 피드백. last_feedback_id 이후 전부."""
+    ids = [f.get("id") for f in feedback_log]
+    last = memory.get("last_feedback_id")
+    return feedback_log[ids.index(last) + 1:] if last in ids else list(feedback_log)
+
+
+def update_long_term(memory: dict, feedback_log: list[dict], recommendations: list[dict],
+                     videos_by_id: dict[str, dict]) -> dict:
+    """새 피드백을 장기 기억에 반영한 새 dict 를 반환한다.
+
+    LLM 이 실패하면 기존 기억을 그대로 돌려준다. 커서(last_feedback_id)를 옮기지
+    않으므로 다음 실행에서 같은 피드백으로 다시 시도한다.
+    """
+    new = pending_feedback(feedback_log, memory)
+    if not new:
+        return memory
+
+    video_of_rec = {r["id"]: r["video_id"] for r in recommendations if r.get("id")}
+    lines = []
+    for entry in new:
+        title = (videos_by_id.get(video_of_rec.get(entry.get("recommendation_id"))) or {}).get("title")
+        kind = entry.get("type")
+        if kind in ("like", "dislike") and title:
+            lines.append(f"- {'좋아요' if kind == 'like' else '싫어요'}: {title}")
+        elif kind == "reply_text" and (text := (entry.get("raw_text") or "").strip()):
+            lines.append(f"- 답장: {text[:1000]}")
+
+    advanced = {**memory, "last_feedback_id": new[-1].get("id")}
+    if not lines:  # 채널 응답처럼 취향 정보가 없는 피드백뿐이면 커서만 옮긴다.
+        return advanced
+
+    current = "\n".join(f"{field}: {memory.get(field) or []}" for field in MEMORY_FIELDS)
+    prompt = f"=== 기존 장기 기억 ===\n{current}\n\n=== 새 피드백 ===\n" + "\n".join(lines)
+    try:
+        result = llm.complete_json(
+            prompt, model=config.MODEL_CHEAP,
+            system=_MEMORY_SYSTEM.format(max_items=config.LONG_TERM_MAX_ITEMS),
+            max_tokens=config.TOKENS_MEMORY, temperature=0.2)
+    except Exception as exc:
+        log.warning("장기 기억 갱신 실패, 다음 실행에서 재시도합니다: %s", exc)
+        return memory
+    if not isinstance(result, dict):
+        log.warning("장기 기억 응답 형식 오류, 다음 실행에서 재시도합니다")
+        return memory
+
+    for field in MEMORY_FIELDS:
+        items = result.get(field)
+        if isinstance(items, list):
+            advanced[field] = [str(i).strip() for i in items if str(i).strip()][:config.LONG_TERM_MAX_ITEMS]
+    advanced["updated_at"] = _now()
+    log.info("장기 기억 갱신: 피드백 %d건 반영", len(new))
+    return advanced
+
+
+def migrate_legacy_data(email: str) -> None:
+    """단일 유저 시절의 data/*.json 을 첫 유저 디렉터리로 옮긴다.
+
+    # ponytail: 1회성 이전. 모든 배포가 data/users/ 구조로 넘어가면 삭제.
+    """
+    legacy = [config.DATA_DIR / name for name in config.USER_FILES.values()]
+    if not any(p.exists() for p in legacy):
+        return
+    target = config.USERS_DIR / config.user_key(email)
+    if target.exists():
+        log.warning("기존 단일 유저 데이터가 있지만 %s 가 이미 있어 옮기지 않습니다", target)
+        return
+    target.mkdir(parents=True)
+    for path in legacy:
+        if path.exists():
+            path.rename(target / path.name)
+    log.info("단일 유저 데이터를 %s 로 옮겼습니다", target)

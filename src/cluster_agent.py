@@ -12,19 +12,18 @@ from . import article_analyzer, config, content_store, embedding_store
 
 log = logging.getLogger(__name__)
 
-# 프로필 임베딩에 넣을 최근 메모 수. 오래된 메모까지 다 넣으면 최신 취향이 묻힌다.
-RECENT_NOTES = 10
-
 # 제목 정규화용. 같은 발표가 다른 영상 ID 로 올라오는 경우가 있어
 # (채널 중복 업로드, 재업로드) 제목으로 한 번 더 거른다.
 _NORMALIZE_TITLE = re.compile(r"[\s\-_·•|/\[\]()#!?.,:;\"'~]+")
 
 
-def profile_text(profile: dict, notes: list[dict]) -> str:
-    """프로필 + 최근 메모를 임베딩용 한 덩어리 텍스트로 만든다.
+def profile_text(profile: dict, notes: list[dict], memory: dict | None = None) -> str:
+    """프로필 + 장기 기억 + 최근 메모(단기 기억)를 임베딩용 한 덩어리 텍스트로 만든다.
 
     메모를 함께 넣는 이유는 구조화 필드가 담지 못하는 맥락이 거기 있기 때문이다
-    (예: "프론트엔드보다 백엔드가 더 궁금해요").
+    (예: "프론트엔드보다 백엔드가 더 궁금해요"). 오래된 메모는 장기 기억에 요약돼
+    있으므로 최근 n개만 넣는다. 장기 기억의 avoid 는 넣지 않는다 — 임베딩에 넣으면
+    피하려는 주제 쪽으로 오히려 끌려간다.
     """
     parts = [
         f"포지션: {profile.get('position', '')}",
@@ -32,7 +31,9 @@ def profile_text(profile: dict, notes: list[dict]) -> str:
         f"관심 주제: {', '.join(profile.get('interests') or [])}",
         f"연차: {profile.get('level', '')}",
     ]
-    if recent := [n.get("text", "") for n in notes[-RECENT_NOTES:] if n.get("text")]:
+    if preferences := (memory or {}).get("preferences"):
+        parts.append("꾸준한 선호: " + " / ".join(preferences))
+    if recent := [n.get("text", "") for n in notes[-config.SHORT_TERM_N:] if n.get("text")]:
         parts.append("추가 관심사와 피드백: " + " / ".join(recent))
     return "\n".join(parts)
 
@@ -66,7 +67,8 @@ def _dedupe_by_title(candidates: list[dict], seen_titles: set[str]) -> list[dict
 
 def top_candidates(profile: dict, notes: list[dict], videos: list[dict],
                    exclude: set[str] | None = None,
-                   k: int = config.TOP_K_CANDIDATES) -> list[dict]:
+                   k: int = config.TOP_K_CANDIDATES,
+                   memory: dict | None = None) -> list[dict]:
     """코사인 유사도 상위 k개 영상을 반환한다.
 
     각 영상 딕셔너리에 `similarity` 를 채워서 돌려준다. 임베딩이 없는 영상은
@@ -83,7 +85,7 @@ def top_candidates(profile: dict, notes: list[dict], videos: list[dict],
         log.warning("임베딩이 있는 영상이 없습니다")
         return []
 
-    query = np.asarray(article_analyzer.embed(profile_text(profile, notes)), dtype="float32")
+    query = np.asarray(article_analyzer.embed(profile_text(profile, notes, memory)), dtype="float32")
     scores = _cosine(query, embeddings)
 
     ranked = sorted(zip(found_ids, scores), key=lambda pair: pair[1], reverse=True)
