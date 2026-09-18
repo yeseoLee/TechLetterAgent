@@ -1,0 +1,14 @@
+{
+  "_comment": "기술 블로그 수집 소스(RSS/Atom). 유튜브 소스는 channels.json. 피드 URL 이 바뀌면 여기만 고친다.",
+  "blogs": [
+    {"name": "Netflix TechBlog", "feed": "https://netflixtechblog.com/feed", "language": "en"},
+    {"name": "Meta Engineering", "feed": "https://engineering.fb.com/feed/", "language": "en"},
+    {"name": "Uber Engineering", "feed": "https://www.uber.com/blog/engineering/rss/", "language": "en"},
+    {"name": "Airbnb Engineering", "feed": "https://medium.com/feed/airbnb-engineering", "language": "en"},
+    {"name": "AWS Architecture Blog", "feed": "https://aws.amazon.com/blogs/architecture/feed/", "language": "en"},
+    {"name": "카카오 기술 블로그", "feed": "https://tech.kakao.com/feed/", "language": "ko"},
+    {"name": "우아한형제들 기술블로그", "feed": "https://techblog.woowahan.com/feed/", "language": "ko"},
+    {"name": "토스 기술 블로그", "feed": "https://toss.tech/rss.xml", "language": "ko"},
+    {"name": "당근 테크 블로그", "feed": "https://medium.com/feed/daangn", "language": "ko"}
+  ]
+}

@@ -15,7 +15,8 @@ import argparse
 import logging
 from datetime import datetime, timezone
 
-from . import article_analyzer, config, content_agent, content_store, embedding_store, prefilter
+from . import (article_analyzer, blog_agent, config, content_agent, content_store,
+               embedding_store, prefilter)
 
 log = logging.getLogger(__name__)
 
@@ -39,6 +40,8 @@ def main(limit: int | None = None, use_llm_filter: bool = True,
     videos = content_store.load(config.VIDEOS, [])
     embeddings = embedding_store.load_all()
     fresh = content_agent.collect_new_videos(per_source=config.PER_SOURCE_LIMIT)
+    # 블로그 글도 같은 dict 모양이라 아래 필터·분석 단계를 그대로 탄다.
+    fresh += blog_agent.collect_new_posts()
     if not fresh:
         return
 
@@ -75,7 +78,8 @@ def main(limit: int | None = None, use_llm_filter: bool = True,
 
         # 4) 자막 앞부분. 데이터센터 IP 에서는 차단되며, 그 경우 설명만으로 간다.
         #    첫 차단 이후로는 content_agent 가 재시도하지 않는다.
-        if with_transcript and (got := content_agent.fetch_transcript(entry["youtube_id"])):
+        if with_transcript and entry.get("youtube_id") and (
+                got := content_agent.fetch_transcript(entry["youtube_id"])):
             entry["transcript"], entry["language"] = got
             stats["자막 포함"] += 1
 
@@ -102,7 +106,7 @@ def main(limit: int | None = None, use_llm_filter: bool = True,
         videos.append(entry)
         added += 1
         stats["추가"] += 1
-        log.info("추가 [%s] %s", entry["difficulty"], entry["title"][:50])
+        log.info("추가 [%s/%s] %s", entry.get("kind", "video"), entry["difficulty"], entry["title"][:50])
 
     content_store.save(config.VIDEOS, videos)
     embedding_store.save_all(embeddings)

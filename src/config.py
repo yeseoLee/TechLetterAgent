@@ -32,6 +32,7 @@ LONG_TERM_MEMORY = DATA_DIR / "long_term_memory.json"
 
 SEED_PROFILE = CONFIG_DIR / "seed_profile.json"
 CHANNELS = CONFIG_DIR / "channels.json"
+BLOGS = CONFIG_DIR / "blogs.json"  # 기술 블로그 RSS 소스
 
 # --- LLM: OpenRouter (OpenAI 호환 API) -----------------------------------
 # 유료 슬러그라 무료 티어의 분당/일일 요청 수 제한이 없다. 대신 계정 크레딧이

@@ -12,7 +12,8 @@ The feedback loop runs through **email replies**, read over IMAP.
 
 ```
 collect.yml (Mon KST 05:00)  src/run_collect.py   — shared across users
-  YouTube Data API → prefilter (rules → LLM) → article_analyzer (summary/difficulty/embedding)
+  YouTube Data API (content_agent) + blog RSS/Atom (blog_agent, config/blogs.json)
+  → prefilter (rules → LLM) → article_analyzer (summary/difficulty/embedding)
   → data/videos.json, data/embeddings.json
 
 send.yml (Mon KST 07:00)     src/run_send.py      — loops over each user in RECIPIENT_EMAILS
@@ -30,7 +31,8 @@ send.yml (Mon KST 07:00)     src/run_send.py      — loops over each user in RE
 | Scope | Path | Notes |
 | --- | --- | --- |
 | Shared | `data/videos.json`, `data/embeddings.json` | Videos and embeddings are shared by all users |
-| Shared | `config/channels.json` | Source whitelist. Any user's `channel-yes` adds to it |
+| Shared | `config/channels.json` | YouTube source whitelist. Any user's `channel-yes` adds to it |
+| Shared | `config/blogs.json` | Tech blog RSS/Atom sources. Blog entries share `videos.json` with `kind: "blog"`, no `youtube_id`, dedup by `url` |
 | Shared | `config/seed_profile.json` | Initial profile for new users |
 | Per user | `data/users/<user_key>/` | `user_profile`, `user_notes`, `recommendations`, `feedback_log`, `discoveries`, `long_term_memory` |
 
