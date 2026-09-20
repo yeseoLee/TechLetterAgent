@@ -27,6 +27,17 @@
     "video_count": 313,
     "reason": "AI 에이전트와 AI 코딩 어시스턴트에 특화된 튜토리얼 채널로, LLM 앱 개발과 개발 생산성 도구에 관심이 많은 주니어 AI/ML 엔지니어에게 직접적으로 도움이 됩니다. Python 기반 예제와 실전 워크플로를 꾸준히 다뤄 기존 구독 채널과 겹치지 않으면서 관심 주제를 깊게 확장해 줍니다.",
     "proposed_at": "2026-09-13T23:51:28+00:00",
+    "answer": "no",
+    "answered_at": "2026-09-20T23:44:19+00:00"
+  },
+  {
+    "channel_id": "UCV03SRZXJEz-hchIAogeJOg",
+    "name": "Claude",
+    "language": "en",
+    "subscriber_count": 587000,
+    "video_count": 196,
+    "reason": "Claude 채널은 AI 에이전트와 LLM 앱 개발에 관한 실용적인 기술 세션과 데모를 꾸준히 제공하여 AI/ML 엔지니어에게 적합합니다. Python 기반 개발자로서 에이전트 구축과 개발 생산성 향상에 직접 도움이 되는 내용입니다.",
+    "proposed_at": "2026-09-20T23:45:52+00:00",
     "answer": null
   }
 ]
