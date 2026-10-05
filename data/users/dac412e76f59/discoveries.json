@@ -49,6 +49,17 @@
     "video_count": 1236,
     "reason": "AI/ML 엔지니어로서 관심 있는 AI 에이전트와 LLM 앱 개발에 대한 실무 중심의 기술 강연을 꾸준히 제공합니다. 주니어 개발자에게 좋은 학습 자료가 될 뿐만 아니라, 이미 구독 중인 채널과 겹치지 않아 새로운 인사이트를 얻기에 적합합니다.",
     "proposed_at": "2026-09-28T00:10:38+00:00",
+    "answer": "no",
+    "answered_at": "2026-10-05T00:20:36+00:00"
+  },
+  {
+    "channel_id": "UC3q8O3Bh2Le8Rj1-Q-_UUbA",
+    "name": "Databricks",
+    "language": "ko",
+    "subscriber_count": 167000,
+    "video_count": 4616,
+    "reason": "Databricks는 데이터·AI 플랫폼 기업으로, AI 에이전트와 LLM 앱 구축에 관한 기술 발표를 꾸준히 올라옵니다. Python 기반 AI/ML 엔지니어로서 관심 주제인 AI 에이전트와 개발 생산성을 모두 다루는 점이 적합합니다.",
+    "proposed_at": "2026-10-05T00:22:59+00:00",
     "answer": null
   }
 ]
