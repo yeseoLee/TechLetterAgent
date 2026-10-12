@@ -61,5 +61,15 @@
     "reason": "Databricks는 데이터·AI 플랫폼 기업으로, AI 에이전트와 LLM 앱 구축에 관한 기술 발표를 꾸준히 올라옵니다. Python 기반 AI/ML 엔지니어로서 관심 주제인 AI 에이전트와 개발 생산성을 모두 다루는 점이 적합합니다.",
     "proposed_at": "2026-10-05T00:22:59+00:00",
     "answer": null
+  },
+  {
+    "channel_id": "UC_eVxIPHFZm7oF_gET0x-8Q",
+    "name": "Google Antigravity",
+    "language": "en",
+    "subscriber_count": 164000,
+    "video_count": 71,
+    "reason": "Google Antigravity는 에이전트 중심 개발 플랫폼을 다루는 공식 채널로, AI 에이전트와 개발 생산성에 관심이 많은 주니어 AI/ML 엔지니어에게 적합합니다. 에이전트 기반 IDE의 기술적 데모와 활용법을 꾸준히 제공합니다.",
+    "proposed_at": "2026-10-12T00:53:38+00:00",
+    "answer": null
   }
 ]
