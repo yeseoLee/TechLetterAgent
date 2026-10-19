@@ -71,5 +71,15 @@
     "reason": "Google Antigravity는 에이전트 중심 개발 플랫폼을 다루는 공식 채널로, AI 에이전트와 개발 생산성에 관심이 많은 주니어 AI/ML 엔지니어에게 적합합니다. 에이전트 기반 IDE의 기술적 데모와 활용법을 꾸준히 제공합니다.",
     "proposed_at": "2026-10-12T00:53:38+00:00",
     "answer": null
+  },
+  {
+    "channel_id": "UCXUPKJO5MZQN11PqgIvyuvQ",
+    "name": "Andrej Karpathy",
+    "language": "en",
+    "subscriber_count": 1730000,
+    "video_count": 17,
+    "reason": "Andrej Karpathy 채널은 AI/ML과 LLM의 내부 동작을 실무 관점에서 설명하는 기술 강연을 제공하여 Python 기반 AI 엔지니어에게 매우 적합합니다. 기존 구독 채널과 겹치지 않으면서 주니어 시기에 필요한 깊이 있는 지식을 얻을 수 있습니다.",
+    "proposed_at": "2026-10-19T00:10:06+00:00",
+    "answer": null
   }
 ]
