@@ -80,6 +80,17 @@
     "video_count": 17,
     "reason": "Andrej Karpathy 채널은 AI/ML과 LLM의 내부 동작을 실무 관점에서 설명하는 기술 강연을 제공하여 Python 기반 AI 엔지니어에게 매우 적합합니다. 기존 구독 채널과 겹치지 않으면서 주니어 시기에 필요한 깊이 있는 지식을 얻을 수 있습니다.",
     "proposed_at": "2026-10-19T00:10:06+00:00",
+    "answer": "yes",
+    "answered_at": "2026-10-25T23:41:42+00:00"
+  },
+  {
+    "channel_id": "UCNjISXi1eAwcLOogdKBb0pQ",
+    "name": "Balaji Chippada",
+    "language": "en",
+    "subscriber_count": 37600,
+    "video_count": 135,
+    "reason": "Agentic AI와 데이터 사이언스 주제를 실용적인 튜토리얼로 꾸준히 다루는 채널이라, AI 에이전트/LLM 앱에 관심이 많은 주니어 AI 엔지니어에게 적합합니다. Python 기반의 예제와 설명이 많을 것으로 보여 기술 스택과도 잘 맞습니다.",
+    "proposed_at": "2026-10-25T23:43:10+00:00",
     "answer": null
   }
 ]
