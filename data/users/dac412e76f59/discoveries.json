@@ -92,5 +92,15 @@
     "reason": "Agentic AI와 데이터 사이언스 주제를 실용적인 튜토리얼로 꾸준히 다루는 채널이라, AI 에이전트/LLM 앱에 관심이 많은 주니어 AI 엔지니어에게 적합합니다. Python 기반의 예제와 설명이 많을 것으로 보여 기술 스택과도 잘 맞습니다.",
     "proposed_at": "2026-10-25T23:43:10+00:00",
     "answer": null
+  },
+  {
+    "channel_id": "UC-CfoAEpdpkB_jYrydYrqSA",
+    "name": "OWASP London",
+    "language": "en",
+    "subscriber_count": 3940,
+    "video_count": 222,
+    "reason": "OWASP London은 정기적으로 개발자 대상 기술 발표·강연 영상을 올리는 채널로, 이미 구독 중인 국내 테크 채널과 겹치지 않습니다. AI/LLM 앱과 테스트/품질 자동화에 관심이 많은 주니어 AI 엔지니어에게 보안 측면의 실무 인사이트를 제공할 수 있습니다.",
+    "proposed_at": "2026-11-02T01:10:14+00:00",
+    "answer": null
   }
 ]
